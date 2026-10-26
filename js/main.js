@@ -10,6 +10,9 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	const ui = {activeTab: 'food', shopCategory: 'food', isBathing: false, speechTimerId: null, toastTimerId: null};
 
 	const byId = id => document.getElementById(id);
+	const currentPet = () => PET_TYPES[Game.state.petType] ?? PET_TYPES.cat;
+	// セリフの語尾 {nya} をペットに合わせて「にゃ」「わん」にする
+	const talk = text => text.replaceAll('{nya}', currentPet().suffix);
 	const elements = {
 		points: byId('points'),
 		streak: byId('streak'),
@@ -25,8 +28,6 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		bathButton: byId('bathButton'),
 		bathSub: byId('bathSub'),
 		lastBath: byId('lastBath'),
-		room: byId('room'),
-		furnitureLayer: byId('furnitureLayer'),
 		avatarContainer: byId('avatarContainer'),
 		catStage: byId('catStage'),
 		stink: byId('stink'),
@@ -81,22 +82,23 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		const dirt = Game.getDirt();
 		const hunger = Game.getHunger();
 		if (dirt >= 85) {
-			return 'くさいにゃ…かゆいにゃ…お風呂入ってほしいにゃ…';
+			return talk('くさい{nya}…かゆい{nya}…お風呂入ってほしい{nya}…');
 		}
 
 		if (dirt >= 60) {
-			return 'からだがベタベタするにゃ…';
+			return talk('からだがベタベタする{nya}…');
 		}
 
 		if (hunger <= 20) {
-			return 'おなかすいたにゃ〜';
+			return talk('おなかすいた{nya}〜');
 		}
 
 		if (dirt < 15) {
-			return 'ぴかぴかで気分いいにゃ！';
+			return talk('ぴかぴかで気分いい{nya}！');
 		}
 
-		return ['にゃーん', 'なでてくれるのにゃ？', 'ごろごろ…'][Math.floor(Math.random() * 3)];
+		const pet = currentPet();
+		return [pet.voice, talk('なでてくれるの{nya}？'), pet.happySound][Math.floor(Math.random() * 3)];
 	}
 
 	function setBar(bar, label, percent, text) {
@@ -106,6 +108,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	}
 
 	function renderCat(dirt, levelInfo) {
+		avatar?.setPetType(Game.state.petType);
 		elements.stink.classList.toggle('is-off', dirt < 50);
 		elements.catStage.classList.toggle('is-sparkling', dirt < 10);
 		avatar?.setState({
@@ -117,12 +120,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	}
 
 	function renderRoom() {
-		const {room} = Game.state;
-		elements.room.dataset.wall = room.wall;
-		elements.room.dataset.floor = room.floor;
-		elements.furnitureLayer.innerHTML = room.furniture
-			.map(id => `<span class="furniture ${id}" title="${escapeHtml(ITEM_BY_ID[id].name)}">${ITEM_BY_ID[id].icon}</span>`)
-			.join('');
+		avatar?.setRoom(Game.state.room);
 	}
 
 	function renderBathButton() {
@@ -146,7 +144,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		elements.streak.textContent = Game.getStreak();
 		elements.catName.textContent = state.catName;
 		elements.levelLabel.textContent = `Lv.${levelInfo.level}`;
-		elements.stageLabel.textContent = levelInfo.stage.name;
+		elements.stageLabel.textContent = currentPet().stageNames[levelInfo.stage.id];
 
 		setBar(elements.cleanBar, elements.cleanValue, 100 - dirt, getCleanLabel(dirt));
 		setBar(elements.hungerBar, elements.hungerValue, hunger, `${Math.round(hunger)}%`);
@@ -217,6 +215,8 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		const ownedItems = ITEM_CATALOG.filter(item => Game.isOwned(item.id));
 		const accessories = ownedItems.filter(item => item.category === 'accessory');
 		const sections = [];
+		const pets = Object.entries(PET_TYPES).map(([id, pet]) => ({id, name: pet.name, icon: pet.icon}));
+		sections.push(`<h3>🐾 ペット</h3>${renderToggleGrid(pets, pet => state.petType === pet.id, 'pet-type')}`);
 
 		for (const slot of ACCESSORY_SLOTS) {
 			const slotItems = accessories.filter(item => item.slot === slot.id);
@@ -309,7 +309,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 
 	function announceGrowth(result) {
 		if (result.grewTo) {
-			showModal(`<div class="modal-emoji">🌟</div><h2>${escapeHtml(Game.state.catName)}が<br>${result.grewTo}に成長した！</h2><p>Lv.${result.leveledUpTo} になったよ</p>`);
+			showModal(`<div class="modal-emoji">🌟</div><h2>${escapeHtml(Game.state.catName)}が<br>${currentPet().stageNames[result.grewTo]}に成長した！</h2><p>Lv.${result.leveledUpTo} になったよ</p>`);
 			return true;
 		}
 
@@ -327,7 +327,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 
 		ui.isBathing = true;
 		elements.bathButton.disabled = true;
-		showSpeech('あわあわ〜♪ きもちいいにゃ〜');
+		showSpeech(talk('あわあわ〜♪ きもちいい{nya}〜'));
 		Effects.bubbles(elements.catStage);
 		let result = null;
 
@@ -347,7 +347,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		const onDone = () => {
 			ui.isBathing = false;
 			elements.bathButton.disabled = false;
-			showSpeech('ぴかぴかになったにゃ！ありがとにゃ！');
+			showSpeech(talk('ぴかぴかになった{nya}！ありがと{nya}！'));
 
 			const hasModal = announceGrowth(result);
 			if (!result.isFirstToday) {
@@ -380,8 +380,8 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		avatar?.eat();
 		Effects.hearts(elements.catStage, 3);
 		showSpeech(result.isTooDirty
-			? `もぐもぐ…でも汚れてて元気が出ないにゃ…（なかよし +${result.gainedXp}）`
-			: `${result.item.name}おいしいにゃ！（なかよし +${result.gainedXp}）`);
+			? talk(`もぐもぐ…でも汚れてて元気が出ない{nya}…（なかよし +${result.gainedXp}）`)
+			: talk(`${result.item.name}おいしい{nya}！（なかよし +${result.gainedXp}）`));
 		announceGrowth(result);
 	}
 
@@ -396,7 +396,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		const note = result.item.category === 'food' ? 'ごはんタブからあげられるよ' : 'さっそく使ってみたよ';
 		showToast(`${result.item.icon} ${result.item.name}を買った！ ${note}`);
 		if (result.item.category === 'accessory') {
-			showSpeech('にあうかにゃ？');
+			showSpeech(talk('にあうか{nya}？'));
 		}
 	}
 
@@ -444,10 +444,21 @@ import {createCatAvatar} from './cat3d/avatar.js';
 				break;
 			}
 
+			case 'pet-type': {
+				choosePet(id);
+				break;
+			}
+
 			default: {
 				break;
 			}
 		}
+	}
+
+	function choosePet(type) {
+		Game.setPetType(type);
+		renderAll();
+		showSpeech(talk(`よろしく{nya}！`));
 	}
 
 	function handlePet() {
@@ -461,7 +472,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	}
 
 	function handleRename() {
-		const name = prompt('ねこの名前を入力してね（10文字まで）', Game.state.catName);
+		const name = prompt(`${currentPet().name}の名前を入力してね（10文字まで）`, Game.state.catName);
 		if (name !== null) {
 			Game.rename(name);
 			renderStatus();
@@ -490,11 +501,20 @@ import {createCatAvatar} from './cat3d/avatar.js';
 
 	function showIntro() {
 		showModal(`
-			<div class="modal-emoji">🐱🛁</div>
+			<div class="modal-emoji">🐱🐶🛁</div>
 			<h2>ふろねこへようこそ！</h2>
-			<p>このねこは <b>あなたがお風呂に入らないと</b> どんどん汚れていっちゃうよ。</p>
-			<p>お風呂に入ったら「お風呂に入ったよ！」ボタンを押してね。ねこもぴかぴかになるよ✨</p>
-			<p>毎日入るとボーナスポイント！ごはん・アクセサリー・模様替えと交換して育てよう。</p>`);
+			<p>この子は <b>あなたがお風呂に入らないと</b> どんどん汚れていっちゃうよ。</p>
+			<p>お風呂に入ったら「お風呂に入ったよ！」ボタンを押してね。この子もぴかぴかになるよ✨</p>
+			<p>毎日入るとボーナスポイント！ごはん・アクセサリー・模様替えと交換して育てよう。</p>
+			<p><b>育てるペットをえらんでね</b>（あとから「コーデ」でかえられるよ）</p>
+			${renderPetPicker()}`);
+	}
+
+	function renderPetPicker() {
+		return `<div class="pet-picker">${Object.entries(PET_TYPES).map(([id, pet]) => `
+			<button type="button" class="toggle ${Game.state.petType === id ? 'is-active' : ''}" data-pet="${id}">
+				<span class="toggle-icon">${pet.icon}</span><span>${pet.name}</span>
+			</button>`).join('')}</div>`;
 	}
 
 	elements.bathButton.addEventListener('click', handleBath);
@@ -508,6 +528,13 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	});
 	elements.catName.addEventListener('click', handleRename);
 	elements.modalClose.addEventListener('click', closeModal);
+	elements.modalBody.addEventListener('click', event => {
+		const button = event.target.closest('[data-pet]');
+		if (button) {
+			choosePet(button.dataset.pet);
+			elements.modalBody.querySelector('.pet-picker').outerHTML = renderPetPicker();
+		}
+	});
 	elements.debugPanel.addEventListener('click', handleDebug);
 	document.addEventListener('visibilitychange', () => {
 		if (!document.hidden) {
@@ -516,11 +543,11 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	});
 
 	try {
-		avatar = createCatAvatar(elements.avatarContainer, {onPet: handlePet});
+		avatar = createCatAvatar(elements.avatarContainer, {onPet: handlePet, stage: elements.catStage});
 	} catch (error) {
 		// WebGL が使えない環境でもゲーム自体は遊べるようにする
 		console.error(error);
-		elements.avatarContainer.textContent = 'この端末では3Dのねこを表示できませんでした';
+		elements.avatarContainer.textContent = 'この端末では3Dのお部屋を表示できませんでした';
 	}
 
 	const isDebugMode = new URLSearchParams(location.search).has('debug');

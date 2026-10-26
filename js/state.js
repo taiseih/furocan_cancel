@@ -30,7 +30,8 @@ const Game = (() => {
 			owned: ['wall-default', 'floor-wood'],
 			equipped: {head: null, face: null, neck: null},
 			room: {wall: 'wall-default', floor: 'floor-wood', furniture: []},
-			catName: 'ミケ',
+			catName: PET_TYPES.cat.defaultName,
+			petType: 'cat',
 			hasSeenIntro: false,
 			debugOffsetMs: 0,
 		};
@@ -153,7 +154,7 @@ const Game = (() => {
 		const after = getLevelInfo();
 		return {
 			leveledUpTo: after.level > levelBefore ? after.level : null,
-			grewTo: after.stage.name === stageBefore ? null : after.stage.name,
+			grewTo: after.stage.id === stageBefore ? null : after.stage.id,
 		};
 	}
 
@@ -173,7 +174,7 @@ const Game = (() => {
 		}
 
 		save();
-		return {isFirstToday, ...reward, ...describeLevelChange(level, stage.name)};
+		return {isFirstToday, ...reward, ...describeLevelChange(level, stage.id)};
 	}
 
 	function feed(itemId) {
@@ -197,7 +198,7 @@ const Game = (() => {
 		state.lastFedAt = now();
 		state.xp += gainedXp;
 		save();
-		return {isOk: true, item, gainedXp, isTooDirty, ...describeLevelChange(level, stage.name)};
+		return {isOk: true, item, gainedXp, isTooDirty, ...describeLevelChange(level, stage.id)};
 	}
 
 	function isOwned(itemId) {
@@ -279,6 +280,20 @@ const Game = (() => {
 		}
 	}
 
+	function setPetType(type) {
+		if (!PET_TYPES[type] || state.petType === type) {
+			return;
+		}
+
+		// 名前を変えていなければ、新しいペットのデフォルトの名前にする
+		if (state.catName === PET_TYPES[state.petType]?.defaultName) {
+			state.catName = PET_TYPES[type].defaultName;
+		}
+
+		state.petType = type;
+		save();
+	}
+
 	function markIntroSeen() {
 		state.hasSeenIntro = true;
 		save();
@@ -325,6 +340,7 @@ const Game = (() => {
 		applyRoom,
 		toggleFurniture,
 		rename,
+		setPetType,
 		markIntroSeen,
 		getRecentBathDays,
 		debugAdvance,

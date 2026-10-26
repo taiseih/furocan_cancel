@@ -23,11 +23,11 @@ const ITEM_CATALOG = [
 	{id: 'wall-sakura', category: 'room', kind: 'wall', name: 'さくら壁紙', icon: '🌸', price: 80, description: '春いっぱいの壁紙'},
 	{id: 'wall-night', category: 'room', kind: 'wall', name: '星空壁紙', icon: '🌙', price: 120, description: 'ねむくなる夜空'},
 	{id: 'floor-wood', category: 'room', kind: 'floor', name: 'フローリング', icon: '🪵', price: 0, description: 'はじめの床'},
-	{id: 'floor-tatami', category: 'room', kind: 'floor', name: '畳', icon: '🟩', price: 70, description: 'ねこが喜ぶ和の床'},
+	{id: 'floor-tatami', category: 'room', kind: 'floor', name: '畳', icon: '🟩', price: 70, description: 'ペットが喜ぶ和の床'},
 	{id: 'floor-carpet', category: 'room', kind: 'floor', name: 'ふわふわカーペット', icon: '🧶', price: 90, description: 'ごろごろしたくなる'},
 	{id: 'furn-plant', category: 'room', kind: 'furniture', name: '観葉植物', icon: '🪴', price: 50, description: '部屋にみどりを'},
 	{id: 'furn-picture', category: 'room', kind: 'furniture', name: '絵画', icon: '🖼️', price: 60, description: '壁にかざる名画'},
-	{id: 'furn-teddy', category: 'room', kind: 'furniture', name: 'ぬいぐるみ', icon: '🧸', price: 70, description: 'ねこのお友だち'},
+	{id: 'furn-teddy', category: 'room', kind: 'furniture', name: 'ぬいぐるみ', icon: '🧸', price: 70, description: 'ペットのお友だち'},
 	{id: 'furn-window', category: 'room', kind: 'furniture', name: '出窓', icon: '🪟', price: 100, description: 'ひなたぼっこ用の窓'},
 	{id: 'furn-sofa', category: 'room', kind: 'furniture', name: 'ソファ', icon: '🛋️', price: 120, description: 'ふかふかのソファ'},
 ];
@@ -47,7 +47,29 @@ const ACCESSORY_SLOTS = [
 ];
 
 const GROWTH_STAGES = [
-	{minLevel: 1, name: 'こねこ', scale: 0.78},
-	{minLevel: 5, name: 'わかねこ', scale: 0.9},
-	{minLevel: 10, name: 'おとなねこ', scale: 1},
+	{id: 'baby', minLevel: 1, scale: 0.78},
+	{id: 'young', minLevel: 5, scale: 0.9},
+	{id: 'adult', minLevel: 10, scale: 1},
 ];
+
+// 育てられるペット。語尾や鳴き声、成長段階の呼び名がペットごとに変わる
+const PET_TYPES = {
+	cat: {
+		name: 'ねこ',
+		icon: '🐱',
+		defaultName: 'ミケ',
+		suffix: 'にゃ',
+		voice: 'にゃーん',
+		happySound: 'ごろごろ…',
+		stageNames: {baby: 'こねこ', young: 'わかねこ', adult: 'おとなねこ'},
+	},
+	pekingese: {
+		name: 'ペキニーズ',
+		icon: '🐶',
+		defaultName: 'ペキ',
+		suffix: 'わん',
+		voice: 'わんっ',
+		happySound: 'くぅ〜ん…',
+		stageNames: {baby: 'こいぬ', young: 'わかいぬ', adult: 'おとないぬ'},
+	},
+};
