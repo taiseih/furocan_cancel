@@ -110,79 +110,13 @@ button {
 /* ---------- 部屋 ---------- */
 .room {
 	position: relative;
-	height: 330px;
+	height: 340px;
 	border-radius: 28px;
 	overflow: hidden;
 	border: 4px solid #fff;
+	background: linear-gradient(#fffdfa, #fff4ec);
 	box-shadow: var(--shadow);
 }
-
-.room-wall {
-	position: absolute;
-	inset: 0 0 30% 0;
-	background:
-		radial-gradient(#ffe2a8 2px, transparent 2.5px) 0 0 / 26px 26px,
-		#fff4dc;
-	transition: background 0.4s;
-}
-
-.room-floor {
-	position: absolute;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	height: 30%;
-	border-top: 6px solid rgba(0, 0, 0, 0.08);
-	background: repeating-linear-gradient(90deg, #dcaa70 0 46px, #c99257 46px 49px);
-}
-
-.room[data-wall='wall-mint'] .room-wall {
-	background: repeating-linear-gradient(90deg, #e2f8ee 0 20px, #c8efdc 20px 40px);
-}
-
-.room[data-wall='wall-sakura'] .room-wall {
-	background:
-		radial-gradient(circle, #ffc0d6 4px, transparent 4.5px) 0 0 / 34px 34px,
-		radial-gradient(circle, #ffd9e6 3px, transparent 3.5px) 17px 17px / 34px 34px,
-		#fff0f5;
-}
-
-.room[data-wall='wall-night'] .room-wall {
-	background:
-		radial-gradient(circle, #fff 1.2px, transparent 1.6px) 0 0 / 40px 40px,
-		radial-gradient(circle, #fff7c2 1.6px, transparent 2px) 20px 24px / 52px 52px,
-		linear-gradient(#232a63, #4b4fa3);
-}
-
-.room[data-floor='floor-tatami'] .room-floor {
-	background:
-		repeating-linear-gradient(90deg, transparent 0 80px, #7d8f3f 80px 83px),
-		repeating-linear-gradient(0deg, #c9d68c 0 3px, #bfcc80 3px 6px);
-}
-
-.room[data-floor='floor-carpet'] .room-floor {
-	background:
-		radial-gradient(circle, #ffe6ef 3px, transparent 3.5px) 0 0 / 18px 18px,
-		#f7b7cf;
-}
-
-.furniture-layer {
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
-}
-
-.furniture {
-	position: absolute;
-	line-height: 1;
-	filter: drop-shadow(0 4px 2px rgba(0, 0, 0, 0.12));
-}
-
-.furn-window { top: 8%; left: 8%; font-size: 64px; }
-.furn-picture { top: 10%; right: 9%; font-size: 52px; }
-.furn-plant { bottom: 14%; left: 4%; font-size: 64px; }
-.furn-teddy { bottom: 10%; left: 22%; font-size: 40px; }
-.furn-sofa { bottom: 12%; right: 3%; font-size: 72px; }
 
 /* ---------- ねこ ---------- */
 .avatar-container {
@@ -199,18 +133,18 @@ button {
 	inset: 0;
 	width: 100%;
 	height: 100%;
-	cursor: pointer;
 	touch-action: manipulation;
 }
 
-/* 吹き出しやキラキラなど DOM のエフェクトをねこの位置に重ねるための枠 */
+/* 吹き出しやキラキラなど DOM のエフェクトを、歩き回るねこの足元（left/top は JS で更新）に重ねる枠 */
 .cat-stage {
+	--cat-scale: 0.78;
 	position: absolute;
 	left: 50%;
-	bottom: 8%;
-	width: 220px;
-	height: 230px;
-	transform: translateX(-50%);
+	top: 80%;
+	width: calc(64px * var(--cat-scale));
+	height: calc(70px * var(--cat-scale));
+	transform: translate(-50%, -100%);
 	pointer-events: none;
 }
 
@@ -835,4 +769,46 @@ button {
 	.stink path {
 		animation: none;
 	}
+}
+
+/* ---------- ペット選択 ---------- */
+.pet-chooser {
+	margin: 4px 0;
+	text-align: left;
+}
+
+.pet-chooser h3 {
+	margin: 10px 0 6px;
+	font-size: 0.85rem;
+}
+
+.swatch-grid {
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+	gap: 6px;
+}
+
+.swatch {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	padding: 8px 4px;
+	border-radius: 14px;
+	border: 2px solid var(--line);
+	background: #fff;
+	font-size: 0.72rem;
+	font-weight: 700;
+}
+
+.swatch.is-active {
+	border-color: var(--pink);
+	background: #ffeef3;
+}
+
+.swatch-color {
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	border: 2px solid #3b2b25;
 }

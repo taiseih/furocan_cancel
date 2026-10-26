@@ -3,6 +3,10 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<!-- 読み込めるのは自サイトと固定バージョンの three.js、Google Fonts だけにして、XSS で外部のスクリプトを差し込まれないようにする。
+	     importmap はインラインなのでハッシュで許可している（importmap を書き換えたらハッシュも計算し直すこと） -->
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self' https://cdn.jsdelivr.net/npm/three@0.170.0/ 'sha256-F19yE3xcdqmRkMZg2Pf/T0mSGc59oI3Fks/soGYzToU='; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+	<meta name="referrer" content="no-referrer">
 	<title>ふろねこ</title>
 	<link rel="preconnect" href="https://fonts.googleapis.com">
 	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,11 +27,7 @@
 			</div>
 		</header>
 
-		<section id="room" class="room" data-wall="wall-default" data-floor="floor-wood">
-			<div class="room-wall"></div>
-			<div class="room-floor"></div>
-			<div id="furnitureLayer" class="furniture-layer"></div>
-
+		<section class="room">
 			<div id="avatarContainer" class="avatar-container"></div>
 			<div id="catStage" class="cat-stage">
 				<div id="speech" class="speech" hidden></div>
@@ -97,6 +97,10 @@
 			"imports": {
 				"three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
 				"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+			},
+			"integrity": {
+				"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js": "sha384-GY5FqjttLCFRt/McQbyaVdCk2O1IQtOeX8Py6NfD89BIAsIyJFRl4UgSXrk2vXAk",
+				"https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/geometries/RoundedBoxGeometry.js": "sha384-S52/WAm3DaIIFna675h5dmavqea/akLlPFtPdnzgWWhnz+/nMqR6PPsSXPOd8Gpw"
 			}
 		}
 	</script>

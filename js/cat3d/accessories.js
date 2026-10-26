@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import {EYE_POSITIONS} from './catModel.js';
 
 const gold = () => new THREE.MeshStandardMaterial({color: '#f5c542', metalness: 1, roughness: 0.25});
 
@@ -56,28 +55,29 @@ function crown() {
 	return group;
 }
 
-function eyewear(isSunglasses) {
+function eyewear(isSunglasses, eyePositions) {
 	const group = new THREE.Group();
 	const frame = isSunglasses ? new THREE.MeshStandardMaterial({color: '#111', roughness: 0.3}) : gold();
 	const lens = isSunglasses
 		? new THREE.MeshPhysicalMaterial({color: '#0b0b0b', roughness: 0.05, clearcoat: 1, metalness: 0.3})
 		: new THREE.MeshPhysicalMaterial({color: '#ffffff', roughness: 0.02, transparent: true, opacity: 0.15});
-	for (const position of EYE_POSITIONS) {
+	for (const position of eyePositions) {
 		const center = position.clone().add(new THREE.Vector3(0, 0, 0.045));
-		const rim = new THREE.Mesh(new THREE.TorusGeometry(0.04, 0.004, 10, 40), frame);
+		const rim = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.004, 10, 40), frame);
 		rim.position.copy(center);
-		const glass = new THREE.Mesh(new THREE.CircleGeometry(0.039, 40), lens);
+		const glass = new THREE.Mesh(new THREE.CircleGeometry(0.049, 40), lens);
 		glass.position.copy(center);
 		group.add(rim, glass);
 	}
 
-	const bridge = new THREE.Mesh(new THREE.TorusGeometry(0.022, 0.0035, 8, 20, Math.PI), frame);
-	bridge.position.set(0, 0.022, 0.163);
+	const bridge = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.0035, 8, 20, Math.PI), frame);
+	const [right, left] = eyePositions[0].x > eyePositions[1].x ? eyePositions : [eyePositions[1], eyePositions[0]];
+	bridge.position.copy(right).add(left).multiplyScalar(0.5).add(new THREE.Vector3(0, 0.008, 0.045));
 	group.add(bridge);
-	for (const side of [1, -1]) {
+	for (const [eye, side] of [[right, 1], [left, -1]]) {
 		const temple = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.15, 8), frame);
 		temple.rotation.x = Math.PI / 2;
-		temple.position.set(0.1 * side, 0.015, 0.09);
+		temple.position.set(eye.x + (0.049 * side), eye.y, eye.z - 0.016);
 		group.add(temple);
 	}
 
@@ -115,8 +115,8 @@ const BUILDERS = {
 	'acc-ribbon': {parent: 'head', build: ribbon},
 	'acc-strawhat': {parent: 'head', build: strawHat},
 	'acc-crown': {parent: 'head', build: crown},
-	'acc-glasses': {parent: 'head', build: () => eyewear(false)},
-	'acc-sunglasses': {parent: 'head', build: () => eyewear(true)},
+	'acc-glasses': {parent: 'head', build: rig => eyewear(false, rig.eyePositions)},
+	'acc-sunglasses': {parent: 'head', build: rig => eyewear(true, rig.eyePositions)},
 	'acc-bell': {parent: 'body', build: bellCollar},
 	'acc-scarf': {parent: 'body', build: scarf},
 };
@@ -124,9 +124,10 @@ const BUILDERS = {
 export function attachAccessories(rig) {
 	const meshes = new Map();
 	for (const [id, {parent, build}] of Object.entries(BUILDERS)) {
-		const object = build();
+		const object = build(rig);
 		object.visible = false;
-		rig[parent].add(object);
+		// 胴体のアクセサリーは、モデルが首まわりの基準を持っていればそこに付ける
+		(parent === 'body' ? rig.collar ?? rig.body : rig[parent]).add(object);
 		meshes.set(id, object);
 	}
 

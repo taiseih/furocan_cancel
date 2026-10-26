@@ -12,6 +12,13 @@ const WEEKLY_BONUS_POINTS = 50;
 const TOO_DIRTY_THRESHOLD = 80;
 const FULL_HUNGER_THRESHOLD = 95;
 const BATH_HISTORY_LIMIT = 60;
+// 改ざんされたセーブデータで、レベル計算のループが終わらなくなったり表示が崩れたりしないようにする上限
+const MAX_COUNTER = 1_000_000;
+const MAX_ITEM_COUNT = 999;
+const NAME_MAX_LENGTH = 10;
+const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+// 制御文字と、文字の並びを入れ替えて見た目を偽装できる双方向テキスト制御文字
+const UNSAFE_NAME_CHARS = /[\u0000-\u001F\u007F-\u009F\u200E\u200F\u202A-\u202E\u2066-\u2069]/g;
 
 const Game = (() => {
 	function createInitialState(nowMs) {
@@ -30,9 +37,111 @@ const Game = (() => {
 			owned: ['wall-default', 'floor-wood'],
 			equipped: {head: null, face: null, neck: null},
 			room: {wall: 'wall-default', floor: 'floor-wood', furniture: []},
-			catName: 'ミケ',
+			catName: PET_BREEDS[0].defaultName,
+			petBreed: PET_BREEDS[0].id,
+			petColor: PET_BREEDS[0].colors[0].id,
 			hasSeenIntro: false,
 			debugOffsetMs: 0,
+		};
+	}
+
+	// 品種を選べるようになる前のセーブデータ（ねこ / ペキニーズの2択）を品種と毛色に置き換える
+	function migratePetType(saved) {
+		if (!saved.petType) {
+			return;
+		}
+
+		if (!saved.petBreed) {
+			saved.petBreed = saved.petType === 'pekingese' ? 'pekingese' : 'mix';
+		}
+
+		delete saved.petType;
+	}
+
+	function sanitizeName(name) {
+		return String(name).replace(UNSAFE_NAME_CHARS, '').trim().slice(0, NAME_MAX_LENGTH);
+	}
+
+	function toCount(value, fallback, max = MAX_COUNTER) {
+		return Number.isFinite(value) ? Math.min(max, Math.max(0, Math.floor(value))) : fallback;
+	}
+
+	function toTime(value, fallback) {
+		return Number.isFinite(value) ? value : fallback;
+	}
+
+	function isObject(value) {
+		return typeof value === 'object' && value !== null && !Array.isArray(value);
+	}
+
+	function isItemOf(id, predicate) {
+		const item = Object.hasOwn(ITEM_BY_ID, id) ? ITEM_BY_ID[id] : undefined;
+		return item !== undefined && predicate(item);
+	}
+
+	// localStorage の中身は利用者や拡張機能が自由に書き換えられるので、知っている項目・型・範囲の値だけを取り込む
+	function sanitizeState(saved, base) {
+		if (!isObject(saved)) {
+			return base;
+		}
+
+		const owned = Array.isArray(saved.owned)
+			? [...new Set(saved.owned.filter(id => isItemOf(id, item => item.category !== 'food')))]
+			: base.owned;
+		const isOwnedId = id => owned.includes(id) || ITEM_BY_ID[id].price === 0;
+
+		const inventory = {};
+		if (isObject(saved.inventory)) {
+			for (const [id, count] of Object.entries(saved.inventory)) {
+				if (isItemOf(id, item => item.category === 'food')) {
+					inventory[id] = toCount(count, 0, MAX_ITEM_COUNT);
+				}
+			}
+		}
+
+		const equipped = {...base.equipped};
+		const savedEquipped = isObject(saved.equipped) ? saved.equipped : {};
+		for (const slot of Object.keys(equipped)) {
+			const id = savedEquipped[slot];
+			if (isItemOf(id, item => item.slot === slot) && isOwnedId(id)) {
+				equipped[slot] = id;
+			}
+		}
+
+		const savedRoom = isObject(saved.room) ? saved.room : {};
+		const pickRoomItem = kind => (isItemOf(savedRoom[kind], item => item.kind === kind) && isOwnedId(savedRoom[kind]) ? savedRoom[kind] : base.room[kind]);
+		const room = {
+			wall: pickRoomItem('wall'),
+			floor: pickRoomItem('floor'),
+			furniture: Array.isArray(savedRoom.furniture)
+				? [...new Set(savedRoom.furniture.filter(id => isItemOf(id, item => item.kind === 'furniture') && isOwnedId(id)))]
+				: [],
+		};
+
+		const breed = Object.hasOwn(PET_BREED_BY_ID, saved.petBreed) ? PET_BREED_BY_ID[saved.petBreed] : PET_BREEDS[0];
+		const color = breed.colors.find(candidate => candidate.id === saved.petColor) ?? breed.colors[0];
+		const catName = typeof saved.catName === 'string' ? sanitizeName(saved.catName) : '';
+		const isDateKey = value => typeof value === 'string' && DATE_KEY_PATTERN.test(value);
+
+		return {
+			points: toCount(saved.points, base.points),
+			streak: toCount(saved.streak, base.streak),
+			bestStreak: toCount(saved.bestStreak, base.bestStreak),
+			lastBathAt: toTime(saved.lastBathAt, base.lastBathAt),
+			lastBathDate: isDateKey(saved.lastBathDate) ? saved.lastBathDate : null,
+			bathDates: Array.isArray(saved.bathDates) ? saved.bathDates.filter(isDateKey).slice(-BATH_HISTORY_LIMIT) : [],
+			hungerAtFeed: Number.isFinite(saved.hungerAtFeed) ? clamp(saved.hungerAtFeed, 0, 100) : base.hungerAtFeed,
+			lastFedAt: toTime(saved.lastFedAt, base.lastFedAt),
+			xp: toCount(saved.xp, base.xp),
+			inventory,
+			owned,
+			equipped,
+			room,
+			catName: catName || breed.defaultName,
+			petBreed: breed.id,
+			petColor: color.id,
+			hasSeenIntro: saved.hasSeenIntro === true,
+			debugOffsetMs: toTime(saved.debugOffsetMs, 0),
 		};
 	}
 
@@ -45,13 +154,11 @@ const Game = (() => {
 			}
 
 			const saved = JSON.parse(raw);
-			return {
-				...base,
-				...saved,
-				equipped: {...base.equipped, ...saved.equipped},
-				room: {...base.room, ...saved.room},
-				inventory: {...saved.inventory},
-			};
+			if (isObject(saved)) {
+				migratePetType(saved);
+			}
+
+			return sanitizeState(saved, base);
 		} catch {
 			return base;
 		}
@@ -153,7 +260,7 @@ const Game = (() => {
 		const after = getLevelInfo();
 		return {
 			leveledUpTo: after.level > levelBefore ? after.level : null,
-			grewTo: after.stage.name === stageBefore ? null : after.stage.name,
+			grewTo: after.stage.id === stageBefore ? null : after.stage.id,
 		};
 	}
 
@@ -173,7 +280,7 @@ const Game = (() => {
 		}
 
 		save();
-		return {isFirstToday, ...reward, ...describeLevelChange(level, stage.name)};
+		return {isFirstToday, ...reward, ...describeLevelChange(level, stage.id)};
 	}
 
 	function feed(itemId) {
@@ -197,7 +304,7 @@ const Game = (() => {
 		state.lastFedAt = now();
 		state.xp += gainedXp;
 		save();
-		return {isOk: true, item, gainedXp, isTooDirty, ...describeLevelChange(level, stage.name)};
+		return {isOk: true, item, gainedXp, isTooDirty, ...describeLevelChange(level, stage.id)};
 	}
 
 	function isOwned(itemId) {
@@ -272,11 +379,42 @@ const Game = (() => {
 	}
 
 	function rename(name) {
-		const trimmed = name.trim().slice(0, 10);
+		const trimmed = sanitizeName(name);
 		if (trimmed) {
 			state.catName = trimmed;
 			save();
 		}
+	}
+
+	function getPet() {
+		const breed = PET_BREED_BY_ID[state.petBreed] ?? PET_BREEDS[0];
+		const color = breed.colors.find(candidate => candidate.id === state.petColor) ?? breed.colors[0];
+		return {breed, color, species: PET_SPECIES[breed.species]};
+	}
+
+	function setPetBreed(breedId) {
+		const breed = PET_BREED_BY_ID[breedId];
+		if (!breed || state.petBreed === breedId) {
+			return;
+		}
+
+		// 名前を変えていなければ、新しい品種のデフォルトの名前にする
+		if (PET_BREEDS.some(candidate => candidate.defaultName === state.catName)) {
+			state.catName = breed.defaultName;
+		}
+
+		state.petBreed = breedId;
+		state.petColor = breed.colors[0].id;
+		save();
+	}
+
+	function setPetColor(colorId) {
+		if (!getPet().breed.colors.some(color => color.id === colorId)) {
+			return;
+		}
+
+		state.petColor = colorId;
+		save();
 	}
 
 	function markIntroSeen() {
@@ -325,6 +463,9 @@ const Game = (() => {
 		applyRoom,
 		toggleFurniture,
 		rename,
+		getPet,
+		setPetBreed,
+		setPetColor,
 		markIntroSeen,
 		getRecentBathDays,
 		debugAdvance,
