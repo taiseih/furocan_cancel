@@ -60,6 +60,7 @@ export function createFurMaterial(uniforms) {
 }
 
 // 頂点カラーで模様を塗る。境界は少し揺らして手描きっぽくする
+// patch は {center, radius, color} の丸いぶちか、しま模様などを描く {test(point), color}
 export function paint(geometry, base, patches = []) {
 	const positions = geometry.attributes.position;
 	const colors = new Float32Array(positions.count * 3);
@@ -69,7 +70,8 @@ export function paint(geometry, base, patches = []) {
 		let color = base;
 		for (const patch of patches) {
 			const wobble = Math.sin((point.x * 23) + (point.y * 17)) * Math.cos(point.z * 19) * 0.025;
-			if (point.distanceTo(patch.center) + wobble < patch.radius) {
+			const isInside = patch.test ? patch.test(point, wobble) : point.distanceTo(patch.center) + wobble < patch.radius;
+			if (isInside) {
 				color = patch.color;
 			}
 		}
@@ -84,6 +86,24 @@ export function paint(geometry, base, patches = []) {
 export function ellipsoid(radii, segments = [40, 30]) {
 	const geometry = new THREE.SphereGeometry(1, ...segments);
 	geometry.scale(radii.x, radii.y, radii.z);
+	return geometry;
+}
+
+// 表面をもこもこに波打たせて、巻き毛や長毛のふくらみを出す。位置だけで決めるので継ぎ目も割れない
+export function fluffy(geometry, amount = 0.025, frequency = 38) {
+	const positions = geometry.attributes.position;
+	const normals = geometry.attributes.normal;
+	const point = new THREE.Vector3();
+	const normal = new THREE.Vector3();
+	for (let index = 0; index < positions.count; index++) {
+		point.fromBufferAttribute(positions, index);
+		normal.fromBufferAttribute(normals, index);
+		const bump = (Math.sin(point.x * frequency) * Math.sin(point.y * frequency * 1.1) * Math.sin(point.z * frequency * 0.9)) + 0.4;
+		point.addScaledVector(normal, Math.abs(bump) * amount);
+		positions.setXYZ(index, point.x, point.y, point.z);
+	}
+
+	geometry.computeVertexNormals();
 	return geometry;
 }
 
@@ -114,7 +134,7 @@ const highlightMaterial = new THREE.MeshBasicMaterial({color: '#ffffff'});
 const blushMaterial = new THREE.MeshBasicMaterial({color: '#ffb0bf', transparent: true, opacity: 0.85, depthWrite: false});
 
 // 黒目（ハイライト付き）と、閉じたときの「∩」の線、ほっぺ
-export function addEyesAndBlush(head, {place}, {eyeX, eyeY = 0, eyeRadii, blushX, blushY}) {
+export function addEyesAndBlush(head, {place}, {eyeX, eyeY = 0, eyeRadii, blushX, blushY, eyeRing}) {
 	const eyeGeometry = ellipsoid(eyeRadii, [20, 14]);
 	const highlightGeometry = new THREE.SphereGeometry(eyeRadii.x * 0.36, 10, 8);
 	const closedEyeGeometry = new THREE.TubeGeometry(new THREE.CatmullRomCurve3([
@@ -129,6 +149,14 @@ export function addEyesAndBlush(head, {place}, {eyeX, eyeY = 0, eyeRadii, blushX
 		const highlight = new THREE.Mesh(highlightGeometry, highlightMaterial);
 		highlight.position.set(eyeRadii.x * 0.3, eyeRadii.y * 0.36, eyeRadii.z * 0.7);
 		open.add(highlight);
+		// 黒っぽい毛では黒目が埋もれるので、まわりに色の付いた縁を入れる
+		if (eyeRing) {
+			const ring = new THREE.Mesh(eyeGeometry, new THREE.MeshBasicMaterial({color: eyeRing}));
+			ring.scale.set(1.3, 1.25, 0.6);
+			ring.position.z = -eyeRadii.z * 0.45;
+			open.add(ring);
+		}
+
 		place(open, x, eyeY, 0.002);
 		const closed = place(new THREE.Mesh(closedEyeGeometry, eyeMaterial), x, eyeY, 0.006);
 		closed.visible = false;
@@ -182,13 +210,18 @@ export function createAccessoryAnchors({head, body, surface, headOffsetY, headSc
 }
 
 // 足: 腰の位置を支点に前後へ振る
-export function buildLegs(body, fur, {positions, hipY, radius, length, colors}) {
+// patches の y は腰からの高さ（足先が -hipY）
+export function buildLegs(body, fur, {positions, hipY, radius, length, colors, patches = [], fluff = 0}) {
 	return positions.map(([x, z], index) => {
 		const pivot = new THREE.Group();
 		pivot.position.set(x, hipY, z);
 		const geometry = new THREE.CapsuleGeometry(radius, length, 6, 16);
 		geometry.translate(0, -(hipY - radius - (length / 2)), 0);
-		pivot.add(mesh(paint(geometry, colors[index]), fur, {outline: OUTLINE}));
+		if (fluff > 0) {
+			fluffy(geometry, fluff);
+		}
+
+		pivot.add(mesh(paint(geometry, colors[index], patches), fur, {outline: OUTLINE}));
 		body.add(pivot);
 		return pivot;
 	});
@@ -203,7 +236,7 @@ export function swingLegs(legs, walkPhase, walk, groom) {
 	legs[3].rotation.x = swing;
 }
 
-export function buildTail(body, fur, {origin, segments, step, radius, taper, colors}) {
+export function buildTail(body, fur, {origin, segments, step, radius, taper, colors, fluff = 0}) {
 	const joints = [];
 	let parent = body;
 	for (let index = 0; index < segments; index++) {
@@ -217,6 +250,10 @@ export function buildTail(body, fur, {origin, segments, step, radius, taper, col
 		const segmentRadius = radius - (index * taper);
 		const geometry = new THREE.CapsuleGeometry(segmentRadius, step * 0.7, 4, 12);
 		geometry.translate(0, step * 0.55, 0);
+		if (fluff > 0) {
+			fluffy(geometry, fluff);
+		}
+
 		joint.add(mesh(paint(geometry, colors[index % colors.length]), fur, {outline: OUTLINE}));
 		parent.add(joint);
 		joints.push(joint);

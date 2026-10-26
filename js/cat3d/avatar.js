@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import {createRoom, ROOM_HALF} from './room.js';
 import {buildChibiCat} from './chibiCat.js';
-import {buildPekingese} from './pekingese.js';
+import {buildDog} from './dog.js';
 import {attachAccessories} from './accessories.js';
 import {mesh, toon, toonify} from './toon.js';
 
@@ -15,19 +15,13 @@ const CAT_SIZE = 1.7;
 const VIEW_DIRECTION = new THREE.Vector3(1, 0.78, 1).normalize();
 const FACE_CAMERA_YAW = Math.atan2(VIEW_DIRECTION.x, VIEW_DIRECTION.z);
 
-const PET_BUILDERS = {cat: buildChibiCat, pekingese: buildPekingese};
+const PET_BUILDERS = {cat: buildChibiCat, dog: buildDog};
 
 const MOOD_POSE = {
 	happy: {lid: 0, earDroop: 0, headPitch: -0.05, tailLift: 1, tailSway: 0.35, breath: 1.6, sad: 0, walkSpeed: 1, restTime: [2, 4]},
 	normal: {lid: 0, earDroop: 0, headPitch: 0, tailLift: 0.4, tailSway: 0.22, breath: 1.8, sad: 0, walkSpeed: 0.85, restTime: [2.5, 5]},
 	sad: {lid: 0.35, earDroop: 1, headPitch: 0.3, tailLift: 0, tailSway: 0.05, breath: 1.1, sad: 1, walkSpeed: 0.45, restTime: [5, 9]},
 };
-
-// 泡を乗せる位置。胴体・頭のおおまかな楕円体の表面から選ぶ
-const FOAM_ANCHORS = [
-	{center: [0, 0.33, -0.04], radii: [0.27, 0.25, 0.35], weight: 3},
-	{center: [0, 0.68, 0.15], radii: [0.4, 0.35, 0.36], weight: 3},
-];
 
 const random = (min, max) => min + (Math.random() * (max - min));
 const damp = (current, target, rate, delta) => current + ((target - current) * (1 - Math.exp(-rate * delta)));
@@ -87,7 +81,7 @@ function createFly() {
 	return group;
 }
 
-export function createCatAvatar(container, {onPet, stage} = {}) {
+export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 	const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
 	renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 	renderer.domElement.className = 'cat-canvas';
@@ -110,7 +104,7 @@ export function createCatAvatar(container, {onPet, stage} = {}) {
 	scene.add(room.group);
 
 	let pet = null;
-	let petType = null;
+	let petKey = null;
 	let accessories = new Map();
 	let equippedIds = new Set();
 	const shadow = createBlobShadow();
@@ -124,30 +118,47 @@ export function createCatAvatar(container, {onPet, stage} = {}) {
 		toon('#ffffff', {transparent: true, opacity: 0.95}),
 		FOAM_COUNT,
 	);
-	const totalWeight = FOAM_ANCHORS.reduce((sum, anchor) => sum + anchor.weight, 0);
-	const foamBubbles = Array.from({length: FOAM_COUNT}, () => {
-		let pick = random(0, totalWeight);
-		const anchor = FOAM_ANCHORS.find(candidate => (pick -= candidate.weight) <= 0) ?? FOAM_ANCHORS[0];
-		return {position: sampleEllipsoid(anchor.center, anchor.radii), size: random(0.06, 0.12), delay: random(0, 0.9)};
-	});
 	foamMesh.frustumCulled = false;
 	foamMesh.visible = false;
+	let foamBubbles = [];
 
-	// ペットの種類を切り替えるときは、モデルとアクセサリーを作り直す
-	function setPetType(type) {
-		const nextType = PET_BUILDERS[type] ? type : 'cat';
-		if (nextType === petType) {
+	// 泡は胴体・頭のおおまかな楕円体の表面に乗せる。体形が品種ごとに違うので、モデルから位置をもらう
+	function scatterFoam(anchors) {
+		const totalWeight = anchors.reduce((sum, anchor) => sum + anchor.weight, 0);
+		foamBubbles = Array.from({length: FOAM_COUNT}, () => {
+			let pick = random(0, totalWeight);
+			const anchor = anchors.find(candidate => (pick -= candidate.weight) <= 0) ?? anchors[0];
+			return {position: sampleEllipsoid(anchor.center, anchor.radii), size: random(0.06, 0.12), delay: random(0, 0.9)};
+		});
+	}
+
+	function disposePet(object) {
+		object.traverse(child => {
+			if (child.isMesh) {
+				child.geometry.dispose();
+			}
+		});
+	}
+
+	// 品種や毛色を切り替えるときは、モデルとアクセサリーを作り直す
+	function setPet({species, breed, palette}) {
+		const builder = PET_BUILDERS[species] ?? PET_BUILDERS.cat;
+		const nextKey = JSON.stringify([species, breed, palette]);
+		if (nextKey === petKey) {
 			return;
 		}
 
 		if (pet) {
+			pet.body.remove(foamMesh);
 			scene.remove(pet.root);
+			disposePet(pet.root);
 		}
 
-		petType = nextType;
-		pet = PET_BUILDERS[petType]();
+		petKey = nextKey;
+		pet = builder({breed, palette});
 		scene.add(pet.root);
 		pet.body.add(foamMesh);
+		scatterFoam(pet.foamAnchors);
 		accessories = attachAccessories({head: pet.headAnchor, body: pet.body, collar: pet.collar, eyePositions: pet.eyePositions});
 		for (const [id, object] of accessories) {
 			toonify(object);
@@ -155,7 +166,7 @@ export function createCatAvatar(container, {onPet, stage} = {}) {
 		}
 	}
 
-	setPetType('cat');
+	setPet(initialPet);
 
 	// 水しぶき
 	const dropletMesh = new THREE.InstancedMesh(new THREE.SphereGeometry(0.025, 8, 6), toon('#8fd3ff', {transparent: true, opacity: 0.8}), DROPLET_COUNT);
@@ -609,7 +620,7 @@ export function createCatAvatar(container, {onPet, stage} = {}) {
 				object.visible = equippedIds.has(id);
 			}
 		},
-		setPetType,
+		setPet,
 		setRoom(roomState) {
 			room.setTheme(roomState);
 			// 家具が増えてねこと重なったら、空いている場所へ移す

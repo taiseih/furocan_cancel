@@ -772,9 +772,43 @@ button {
 }
 
 /* ---------- ペット選択 ---------- */
-.pet-picker {
+.pet-chooser {
+	margin: 4px 0;
+	text-align: left;
+}
+
+.pet-chooser h3 {
+	margin: 10px 0 6px;
+	font-size: 0.85rem;
+}
+
+.swatch-grid {
 	display: grid;
-	grid-template-columns: 1fr 1fr;
-	gap: 8px;
-	margin: 12px 0 4px;
+	grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+	gap: 6px;
+}
+
+.swatch {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 4px;
+	padding: 8px 4px;
+	border-radius: 14px;
+	border: 2px solid var(--line);
+	background: #fff;
+	font-size: 0.72rem;
+	font-weight: 700;
+}
+
+.swatch.is-active {
+	border-color: var(--pink);
+	background: #ffeef3;
+}
+
+.swatch-color {
+	width: 26px;
+	height: 26px;
+	border-radius: 50%;
+	border: 2px solid #3b2b25;
 }

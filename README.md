@@ -36,7 +36,7 @@ python3 -m http.server 8000
 - **なかよし**: お風呂やごはんで上がり、猫がレベルアップ。こねこ → わかねこ（Lv5）→ おとなねこ（Lv10）と成長
   - きれいさが20%以下のときは、ごはんでもらえるなかよしが半分になる
 - **お風呂ボーナス**（その日最初のお風呂のみ）: 10pt + 連続日数ごとに5pt（最大+30pt）。7日連続ごとにさらに+50pt
-- **ペット**: ねこ（三毛）とペキニーズから選べる。最初の説明画面か「✨ コーデ」タブでいつでも変更でき、ポイントや育成状況は引き継がれる
+- **ペット**: ねこ4品種（ミックス・スコティッシュ・ペルシャ・シャム）といぬ4品種（ペキニーズ・柴犬・トイプードル・ダックス）から選べ、品種ごとに毛色も選べる。最初の説明画面か「✨ コーデ」タブでいつでも変更でき、ポイントや育成状況は引き継がれる
 - ペットをタップするとなでられる。名前をタップすると名前を変更できる
 
 ## 動作検証
@@ -67,18 +67,37 @@ document.querySelector('#bathButton').click();
 catAvatar.debugStep(1.8); // 例: ぶるぶるの場面
 ```
 
+## セキュリティ
+
+- **XSS 対策**: 画面の HTML は `js/main.js` の `` html`...` `` タグ付きテンプレートで組み立て、埋め込む値はすべて自動でエスケープする。`innerHTML` には `setHtml()` 経由で `` html`...` `` の結果しか入れられない
+- **セーブデータの検証**: localStorage は書き換えられるので、読み込み時に `sanitizeState()`（`js/state.js`）で既知の項目・型・範囲の値だけを取り込む。名前は制御文字・双方向テキスト制御文字を除いて 10 文字まで
+- **CSP**: `index.html` の `<meta http-equiv="Content-Security-Policy">` で、読み込めるのを自サイト・固定バージョンの three.js・Google Fonts に限定し、インラインスクリプトと style 属性を禁止している
+- **SRI**: CDN の three.js は importmap の `integrity` でハッシュを固定している
+
+### 変更するときの注意
+
+- importmap を書き換えたら、CSP の `sha256-...` を計算し直す
+  ```bash
+  python3 -c "import re,hashlib,base64;s=open('index.html').read();m=re.search(r'<script type=\"importmap\">(.*?)</script>',s,re.S);print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"
+  ```
+- three.js のバージョンを上げる、または別のアドオンを使う場合は、そのファイルの SRI ハッシュを importmap の `integrity` に追加する
+  ```bash
+  curl -sL <ファイルのURL> | openssl dgst -sha384 -binary | openssl base64 -A
+  ```
+- `frame-ancestors`（クリックジャッキング対策）や `X-Content-Type-Options` は meta タグでは効かないので、公開するときはホスティング側の HTTP ヘッダーで設定する
+
 ## ファイル構成
 
 ```text
-js/data.js     アイテムと成長段階の定義
+js/data.js     アイテム・成長段階・ペットの品種と毛色の定義
 js/state.js    ゲームの状態とルール（時間経過による汚れ・空腹、ポイント、購入）
 js/effects.js  泡・キラキラ・ハートなどの DOM エフェクト
 js/cat3d/      3Dのお部屋とねこ（Three.js・等角投影のトゥーン調）
   toon.js        トゥーン調マテリアルと輪郭線（背面法）
   room.js        お部屋（壁紙・床・家具の模様替え、ねこが歩ける範囲）
   petKit.js      ペット共通の部品（汚れ・濡れ表現の毛のマテリアル、目・舌・足・しっぽ、アクセサリーの取り付け位置）
-  chibiCat.js    三毛のちびねこ
-  pekingese.js   ペキニーズ
+  chibiCat.js    ちびねこ（品種で耳・毛の長さ、毛色で模様が変わる）
+  dog.js         ちびいぬ（品種ごとの体形・耳・しっぽ・マズル）
   accessories.js アクセサリーの3Dモデル
   avatar.js      シーン、カメラ、ねこの行動（歩き回る・食べる・毛づくろい）、お風呂演出、ハエ
 assets/        完成イメージ（デザインの参考資料）

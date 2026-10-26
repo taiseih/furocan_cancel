@@ -10,7 +10,12 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	const ui = {activeTab: 'food', shopCategory: 'food', isBathing: false, speechTimerId: null, toastTimerId: null};
 
 	const byId = id => document.getElementById(id);
-	const currentPet = () => PET_TYPES[Game.state.petType] ?? PET_TYPES.cat;
+	const currentPet = () => Game.getPet().species;
+	// 3D モデルに渡す品種と毛色
+	const petModel = () => {
+		const {breed, color} = Game.getPet();
+		return {species: breed.species, breed: breed.id, palette: color.palette};
+	};
 	// セリフの語尾 {nya} をペットに合わせて「にゃ」「わん」にする
 	const talk = text => text.replaceAll('{nya}', currentPet().suffix);
 	const elements = {
@@ -42,7 +47,43 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	};
 
 	function escapeHtml(text) {
-		return String(text).replace(/[&<>"']/g, char => `&#${char.codePointAt(0)};`);
+		return String(text).replace(/[&<>"'`=]/g, char => `&#${char.codePointAt(0)};`);
+	}
+
+	// html`...` で組み立てた HTML。埋め込む値は必ずエスケープされ、html`...` で作ったものだけがそのまま入る
+	class SafeHtml {
+		constructor(value) {
+			this.value = value;
+		}
+
+		toString() {
+			return this.value;
+		}
+	}
+
+	function toHtml(value) {
+		if (value instanceof SafeHtml) {
+			return value.value;
+		}
+
+		if (Array.isArray(value)) {
+			return value.map(toHtml).join('');
+		}
+
+		return escapeHtml(value ?? '');
+	}
+
+	function html(strings, ...values) {
+		return new SafeHtml(strings.reduce((result, string, index) => result + string + (index < values.length ? toHtml(values[index]) : ''), ''));
+	}
+
+	// innerHTML へは html`...` で作ったものしか入れられないようにして、エスケープ漏れを防ぐ
+	function setHtml(element, content) {
+		if (!(content instanceof SafeHtml)) {
+			throw new TypeError('setHtml には html`...` で作った値を渡してください');
+		}
+
+		element.innerHTML = content.value;
 	}
 
 	function formatElapsed(ms) {
@@ -108,7 +149,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	}
 
 	function renderCat(dirt, levelInfo) {
-		avatar?.setPetType(Game.state.petType);
+		avatar?.setPet(petModel());
 		elements.stink.classList.toggle('is-off', dirt < 50);
 		elements.catStage.classList.toggle('is-sparkling', dirt < 10);
 		avatar?.setState({
@@ -157,12 +198,12 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	}
 
 	function renderItemCard(item, actionHtml, extraClass = '') {
-		return `
+		return html`
 			<div class="item-card ${extraClass}">
 				<div class="item-icon">${item.icon}</div>
 				<div class="item-info">
-					<div class="item-name">${escapeHtml(item.name)}</div>
-					<div class="item-desc">${escapeHtml(item.description)}</div>
+					<div class="item-name">${item.name}</div>
+					<div class="item-desc">${item.description}</div>
 				</div>
 				${actionHtml}
 			</div>`;
@@ -171,18 +212,18 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	function renderFoodTab() {
 		const foods = ITEM_CATALOG.filter(item => item.category === 'food' && Game.state.inventory[item.id] > 0);
 		if (foods.length === 0) {
-			return '<p class="empty">ごはんがないよ。<button type="button" class="link" data-action="goto-shop" data-category="food">ショップで買おう</button></p>';
+			return html`<p class="empty">ごはんがないよ。<button type="button" class="link" data-action="goto-shop" data-category="food">ショップで買おう</button></p>`;
 		}
 
-		return foods.map(item => renderItemCard(
+		return html`${foods.map(item => renderItemCard(
 			item,
-			`<button type="button" class="btn btn-primary" data-action="feed" data-id="${item.id}">あげる <small>×${Game.state.inventory[item.id]}</small></button>`,
-		)).join('');
+			html`<button type="button" class="btn btn-primary" data-action="feed" data-id="${item.id}">あげる <small>×${Game.state.inventory[item.id]}</small></button>`,
+		))}`;
 	}
 
 	function renderShopTab() {
-		const chips = SHOP_CATEGORIES.map(category => `
-			<button type="button" class="chip ${category.id === ui.shopCategory ? 'is-active' : ''}" data-action="shop-category" data-category="${category.id}">${category.label}</button>`).join('');
+		const chips = SHOP_CATEGORIES.map(category => html`
+			<button type="button" class="chip ${category.id === ui.shopCategory ? 'is-active' : ''}" data-action="shop-category" data-category="${category.id}">${category.label}</button>`);
 
 		const items = ITEM_CATALOG
 			.filter(item => item.category === ui.shopCategory && item.price > 0)
@@ -191,23 +232,22 @@ import {createCatAvatar} from './cat3d/avatar.js';
 				const canAfford = Game.state.points >= item.price;
 				const label = isOwnedItem ? '持ってる' : `${item.price}pt`;
 				const ownedCount = item.category === 'food' ? (Game.state.inventory[item.id] ?? 0) : 0;
-				const countNote = ownedCount > 0 ? `<small class="owned-count">所持 ${ownedCount}</small>` : '';
+				const countNote = ownedCount > 0 ? html`<small class="owned-count">所持 ${ownedCount}</small>` : '';
 				return renderItemCard(
 					item,
-					`<div class="buy-area">${countNote}<button type="button" class="btn btn-buy" data-action="buy" data-id="${item.id}" ${isOwnedItem || !canAfford ? 'disabled' : ''}>${label}</button></div>`,
+					html`<div class="buy-area">${countNote}<button type="button" class="btn btn-buy" data-action="buy" data-id="${item.id}" ${isOwnedItem || !canAfford ? html`disabled` : ''}>${label}</button></div>`,
 					isOwnedItem ? 'is-owned' : '',
 				);
-			})
-			.join('');
+			});
 
-		return `<div class="chips">${chips}</div>${items}`;
+		return html`<div class="chips">${chips}</div>${items}`;
 	}
 
 	function renderToggleGrid(items, isActive, action) {
-		return `<div class="toggle-grid">${items.map(item => `
+		return html`<div class="toggle-grid">${items.map(item => html`
 			<button type="button" class="toggle ${isActive(item) ? 'is-active' : ''}" data-action="${action}" data-id="${item.id}">
-				<span class="toggle-icon">${item.icon}</span><span>${escapeHtml(item.name)}</span>
-			</button>`).join('')}</div>`;
+				<span class="toggle-icon">${item.icon}</span><span>${item.name}</span>
+			</button>`)}</div>`;
 	}
 
 	function renderStyleTab() {
@@ -215,31 +255,30 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		const ownedItems = ITEM_CATALOG.filter(item => Game.isOwned(item.id));
 		const accessories = ownedItems.filter(item => item.category === 'accessory');
 		const sections = [];
-		const pets = Object.entries(PET_TYPES).map(([id, pet]) => ({id, name: pet.name, icon: pet.icon}));
-		sections.push(`<h3>🐾 ペット</h3>${renderToggleGrid(pets, pet => state.petType === pet.id, 'pet-type')}`);
+		sections.push(renderPetChooser());
 
 		for (const slot of ACCESSORY_SLOTS) {
 			const slotItems = accessories.filter(item => item.slot === slot.id);
 			if (slotItems.length > 0) {
-				sections.push(`<h3>🎀 ${slot.label}</h3>${renderToggleGrid(slotItems, item => state.equipped[slot.id] === item.id, 'equip')}`);
+				sections.push(html`<h3>🎀 ${slot.label}</h3>${renderToggleGrid(slotItems, item => state.equipped[slot.id] === item.id, 'equip')}`);
 			}
 		}
 
 		if (accessories.length === 0) {
-			sections.push('<p class="empty">アクセサリーはショップで買えるよ</p>');
+			sections.push(html`<p class="empty">アクセサリーはショップで買えるよ</p>`);
 		}
 
 		for (const [kind, label] of [['wall', '🧱 壁紙'], ['floor', '🟫 床']]) {
 			const kindItems = ownedItems.filter(item => item.kind === kind);
-			sections.push(`<h3>${label}</h3>${renderToggleGrid(kindItems, item => state.room[kind] === item.id, 'room')}`);
+			sections.push(html`<h3>${label}</h3>${renderToggleGrid(kindItems, item => state.room[kind] === item.id, 'room')}`);
 		}
 
 		const furniture = ownedItems.filter(item => item.kind === 'furniture');
-		sections.push(`<h3>🪑 家具</h3>${furniture.length > 0
+		sections.push(html`<h3>🪑 家具</h3>${furniture.length > 0
 			? renderToggleGrid(furniture, item => state.room.furniture.includes(item.id), 'furniture')
-			: '<p class="empty">家具はショップの「模様替え」で買えるよ</p>'}`);
+			: html`<p class="empty">家具はショップの「模様替え」で買えるよ</p>`}`);
 
-		return sections.join('');
+		return html`${sections}`;
 	}
 
 	function renderRecordTab() {
@@ -247,10 +286,10 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		const days = Game.getRecentBathDays(RECORD_DAYS);
 		const calendar = days.map(day => {
 			const [, month, date] = day.key.split('-');
-			return `<div class="day ${day.hasBathed ? 'is-bathed' : ''}"><span>${Number(month)}/${Number(date)}</span><b>${day.hasBathed ? '🛁' : '・'}</b></div>`;
-		}).join('');
+			return html`<div class="day ${day.hasBathed ? 'is-bathed' : ''}"><span>${Number(month)}/${Number(date)}</span><b>${day.hasBathed ? '🛁' : '・'}</b></div>`;
+		});
 
-		return `
+		return html`
 			<h3>📅 さいきん${RECORD_DAYS}日のお風呂</h3>
 			<div class="calendar">${calendar}</div>
 			<div class="stats">
@@ -270,7 +309,8 @@ import {createCatAvatar} from './cat3d/avatar.js';
 			tab.setAttribute('aria-selected', String(isActive));
 		}
 
-		elements.panelBody.innerHTML = TAB_RENDERERS[ui.activeTab]();
+		setHtml(elements.panelBody, TAB_RENDERERS[ui.activeTab]());
+		applySwatchColors(elements.panelBody);
 	}
 
 	function renderAll() {
@@ -294,8 +334,9 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		ui.toastTimerId = setTimeout(() => elements.toast.classList.remove('is-visible'), TOAST_DURATION_MS);
 	}
 
-	function showModal(html) {
-		elements.modalBody.innerHTML = html;
+	function showModal(content) {
+		setHtml(elements.modalBody, content);
+		applySwatchColors(elements.modalBody);
 		elements.modal.hidden = false;
 		elements.modalClose.focus();
 	}
@@ -309,7 +350,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 
 	function announceGrowth(result) {
 		if (result.grewTo) {
-			showModal(`<div class="modal-emoji">🌟</div><h2>${escapeHtml(Game.state.catName)}が<br>${currentPet().stageNames[result.grewTo]}に成長した！</h2><p>Lv.${result.leveledUpTo} になったよ</p>`);
+			showModal(html`<div class="modal-emoji">🌟</div><h2>${Game.state.catName}が<br>${currentPet().stageNames[result.grewTo]}に成長した！</h2><p>Lv.${result.leveledUpTo} になったよ</p>`);
 			return true;
 		}
 
@@ -353,7 +394,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 			if (!result.isFirstToday) {
 				showToast('✨ ぴかぴか！（ボーナスは1日1回だよ）');
 			} else if (result.isWeeklyBonus && !hasModal) {
-				showModal(`<div class="modal-emoji">🏆</div><h2>${result.nextStreak}日連続お風呂達成！</h2><p>1週間ボーナス込みで <b>+${result.earned}pt</b> もらったよ</p>`);
+				showModal(html`<div class="modal-emoji">🏆</div><h2>${result.nextStreak}日連続お風呂達成！</h2><p>1週間ボーナス込みで <b>+${result.earned}pt</b> もらったよ</p>`);
 			} else {
 				showToast(`🛁 お風呂ボーナス +${result.earned}pt（${result.nextStreak}日連続）`);
 			}
@@ -444,8 +485,13 @@ import {createCatAvatar} from './cat3d/avatar.js';
 				break;
 			}
 
-			case 'pet-type': {
-				choosePet(id);
+			case 'pet-breed': {
+				choosePetBreed(id);
+				break;
+			}
+
+			case 'pet-color': {
+				choosePetColor(id);
 				break;
 			}
 
@@ -455,10 +501,16 @@ import {createCatAvatar} from './cat3d/avatar.js';
 		}
 	}
 
-	function choosePet(type) {
-		Game.setPetType(type);
+	function choosePetBreed(breedId) {
+		Game.setPetBreed(breedId);
 		renderAll();
-		showSpeech(talk(`よろしく{nya}！`));
+		showSpeech(talk('よろしく{nya}！'));
+	}
+
+	function choosePetColor(colorId) {
+		Game.setPetColor(colorId);
+		renderAll();
+		showSpeech(talk('にあう{nya}？'));
 	}
 
 	function handlePet() {
@@ -472,7 +524,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	}
 
 	function handleRename() {
-		const name = prompt(`${currentPet().name}の名前を入力してね（10文字まで）`, Game.state.catName);
+		const name = prompt(`${Game.getPet().breed.name}の名前を入力してね（10文字まで）`, Game.state.catName);
 		if (name !== null) {
 			Game.rename(name);
 			renderStatus();
@@ -500,21 +552,40 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	}
 
 	function showIntro() {
-		showModal(`
+		showModal(html`
 			<div class="modal-emoji">🐱🐶🛁</div>
 			<h2>ふろねこへようこそ！</h2>
 			<p>この子は <b>あなたがお風呂に入らないと</b> どんどん汚れていっちゃうよ。</p>
 			<p>お風呂に入ったら「お風呂に入ったよ！」ボタンを押してね。この子もぴかぴかになるよ✨</p>
 			<p>毎日入るとボーナスポイント！ごはん・アクセサリー・模様替えと交換して育てよう。</p>
 			<p><b>育てるペットをえらんでね</b>（あとから「コーデ」でかえられるよ）</p>
-			${renderPetPicker()}`);
+			<div class="pet-chooser">${renderPetChooser()}</div>`);
 	}
 
-	function renderPetPicker() {
-		return `<div class="pet-picker">${Object.entries(PET_TYPES).map(([id, pet]) => `
-			<button type="button" class="toggle ${Game.state.petType === id ? 'is-active' : ''}" data-pet="${id}">
-				<span class="toggle-icon">${pet.icon}</span><span>${pet.name}</span>
-			</button>`).join('')}</div>`;
+	// ねこ・いぬの品種と、選んだ品種の毛色をえらぶボタン。コーデタブと最初の説明の両方で使う
+	function renderPetChooser() {
+		const {breed: currentBreed, color: currentColor} = Game.getPet();
+		const breedSections = Object.entries(PET_SPECIES).map(([speciesId, species]) => {
+			const breeds = PET_BREEDS.filter(breed => breed.species === speciesId);
+			return html`<h3>${species.icon} ${species.name}</h3>${renderToggleGrid(breeds, breed => breed.id === currentBreed.id, 'pet-breed')}`;
+		});
+		const swatches = currentBreed.colors.map(color => html`
+			<button type="button" class="swatch ${color.id === currentColor.id ? 'is-active' : ''}" data-action="pet-color" data-id="${color.id}">
+				<span class="swatch-color" data-swatch="${petColorSwatch(color).join(',')}"></span>
+				<span>${color.name}</span>
+			</button>`);
+		return html`${breedSections}<h3>🎨 毛色</h3><div class="swatch-grid">${swatches}</div>`;
+	}
+
+	// CSP でインラインの style 属性を禁止しているので、見本の色は DOM から設定する。色は #rrggbb だけを受け付ける
+	function applySwatchColors(root) {
+		for (const swatch of root.querySelectorAll('[data-swatch]')) {
+			const colors = swatch.dataset.swatch.split(',').filter(color => /^#[\da-f]{6}$/i.test(color));
+			if (colors.length === 3) {
+				const [first, second, third] = colors;
+				swatch.style.background = `conic-gradient(${first} 0 50%, ${second} 50% 75%, ${third} 75%)`;
+			}
+		}
 	}
 
 	elements.bathButton.addEventListener('click', handleBath);
@@ -529,11 +600,20 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	elements.catName.addEventListener('click', handleRename);
 	elements.modalClose.addEventListener('click', closeModal);
 	elements.modalBody.addEventListener('click', event => {
-		const button = event.target.closest('[data-pet]');
-		if (button) {
-			choosePet(button.dataset.pet);
-			elements.modalBody.querySelector('.pet-picker').outerHTML = renderPetPicker();
+		const button = event.target.closest('[data-action^="pet-"]');
+		if (!button) {
+			return;
 		}
+
+		if (button.dataset.action === 'pet-breed') {
+			choosePetBreed(button.dataset.id);
+		} else {
+			choosePetColor(button.dataset.id);
+		}
+
+		const chooser = elements.modalBody.querySelector('.pet-chooser');
+		setHtml(chooser, renderPetChooser());
+		applySwatchColors(chooser);
 	});
 	elements.debugPanel.addEventListener('click', handleDebug);
 	document.addEventListener('visibilitychange', () => {
@@ -543,7 +623,7 @@ import {createCatAvatar} from './cat3d/avatar.js';
 	});
 
 	try {
-		avatar = createCatAvatar(elements.avatarContainer, {onPet: handlePet, stage: elements.catStage});
+		avatar = createCatAvatar(elements.avatarContainer, {onPet: handlePet, stage: elements.catStage, pet: petModel()});
 	} catch (error) {
 		// WebGL が使えない環境でもゲーム自体は遊べるようにする
 		console.error(error);
