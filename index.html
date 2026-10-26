@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ja">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>ふろねこ</title>
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;800&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+	<main class="app">
+		<header class="hud">
+			<div class="hud-name">
+				<button id="catName" class="cat-name" type="button" title="なまえを変える">ミケ</button>
+				<span id="levelLabel" class="badge">Lv.1</span>
+				<span id="stageLabel" class="badge badge-stage">こねこ</span>
+			</div>
+			<div class="hud-counters">
+				<div class="counter"><span aria-hidden="true">💰</span><b id="points">0</b>pt</div>
+				<div class="counter"><span aria-hidden="true">🔥</span><b id="streak">0</b>日連続</div>
+			</div>
+		</header>
+
+		<section id="room" class="room" data-wall="wall-default" data-floor="floor-wood">
+			<div class="room-wall"></div>
+			<div class="room-floor"></div>
+			<div id="furnitureLayer" class="furniture-layer"></div>
+
+			<div id="avatarContainer" class="avatar-container"></div>
+			<div id="catStage" class="cat-stage">
+				<div id="speech" class="speech" hidden></div>
+				<svg id="stink" class="stink is-off" viewBox="0 0 220 220" aria-hidden="true">
+					<path d="M30 120 q-9 -9 0 -18 q9 -9 0 -18 q-9 -9 0 -18"/>
+					<path d="M190 120 q9 -9 0 -18 q-9 -9 0 -18 q9 -9 0 -18"/>
+					<path d="M200 180 q9 -8 0 -16 q-9 -8 0 -16"/>
+				</svg>
+			</div>
+		</section>
+
+		<section class="status" aria-label="ステータス">
+			<div class="status-row">
+				<span class="status-label">🫧 きれい度</span>
+				<div class="bar"><div id="cleanBar" class="bar-fill bar-clean"></div></div>
+				<span id="cleanValue" class="status-value"></span>
+			</div>
+			<div class="status-row">
+				<span class="status-label">🍚 おなか</span>
+				<div class="bar"><div id="hungerBar" class="bar-fill bar-hunger"></div></div>
+				<span id="hungerValue" class="status-value"></span>
+			</div>
+			<div class="status-row">
+				<span class="status-label">💗 なかよし</span>
+				<div class="bar"><div id="xpBar" class="bar-fill bar-xp"></div></div>
+				<span id="xpValue" class="status-value"></span>
+			</div>
+		</section>
+
+		<section class="bath">
+			<button id="bathButton" class="bath-button" type="button">
+				<span class="bath-main">🛁 お風呂に入ったよ！</span>
+				<span id="bathSub" class="bath-sub"></span>
+			</button>
+			<p id="lastBath" class="last-bath"></p>
+		</section>
+
+		<nav id="tabs" class="tabs" role="tablist">
+			<button type="button" role="tab" data-tab="food">🍚 ごはん</button>
+			<button type="button" role="tab" data-tab="shop">🛍️ ショップ</button>
+			<button type="button" role="tab" data-tab="style">✨ コーデ</button>
+			<button type="button" role="tab" data-tab="record">📅 きろく</button>
+		</nav>
+		<section id="panelBody" class="panel" role="tabpanel"></section>
+
+		<div id="debugPanel" class="debug" hidden>
+			<span>🛠 デバッグ:</span>
+			<button type="button" data-debug="6">+6時間</button>
+			<button type="button" data-debug="24">+1日</button>
+			<button type="button" data-debug="reset">リセット</button>
+		</div>
+	</main>
+
+	<div id="toast" class="toast" role="status" aria-live="polite"></div>
+	<div id="modal" class="modal" hidden>
+		<div class="modal-card">
+			<div id="modalBody"></div>
+			<button id="modalClose" class="btn btn-primary" type="button">OK</button>
+		</div>
+	</div>
+
+	<script src="js/data.js"></script>
+	<script src="js/state.js"></script>
+	<script src="js/effects.js"></script>
+	<script type="importmap">
+		{
+			"imports": {
+				"three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+				"three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+			}
+		}
+	</script>
+	<script type="module" src="js/main.js"></script>
+</body>
+</html>
