@@ -9,26 +9,41 @@
 
 ## 環境構築
 
+React + TypeScript で書かれていて、ビルドには Vite を使っています。
+
 ### 必要なもの
 
+- Node.js 20.19 以上（または 22.12 以上）と npm
 - WebGL 2 に対応したモダンブラウザ（最新の Chrome / Safari / Firefox / Edge）
-- Python 3（静的ファイルサーバーとして使うだけ。他の静的サーバーでも可）
-- 初回読み込み時のインターネット接続（Three.js 0.170.0 を cdn.jsdelivr.net から読み込むため）
-
-ビルドや npm install などは不要です。
 
 ### 起動
 
-ES モジュールを使っているため、`index.html` を直接開く（`file://`）と動きません。プロジェクトフォルダでローカルサーバーを起動してください。
-
 ```sh
-python3 -m http.server 8000
-# → http://localhost:8000
+npm install
+npm run dev
+# → http://localhost:5173
 ```
 
-ほかに VS Code の拡張機能「Live Server」なども使えます。
+同じ Wi-Fi 内のスマホで試す場合は `npm run dev -- --host` で起動し、`http://<MacのIPアドレス>:5173` を開きます（IP は `ipconfig getifaddr en0` で確認できます）。
 
-同じ Wi-Fi 内のスマホで試す場合は `http://<MacのIPアドレス>:8000` を開きます（IP は `ipconfig getifaddr en0` で確認できます）。
+| コマンド | 内容 |
+| --- | --- |
+| `npm run dev` | 開発サーバー（保存すると即反映） |
+| `npm run build` | 型チェックして `dist/` に本番用ファイルを出力 |
+| `npm run preview` | ビルドした `dist/` をローカルで確認（CSP も本番と同じ） |
+| `npm run typecheck` | 型チェックだけ |
+| `npm test` | ゲームルールのテスト（Vitest） |
+
+### 公開
+
+以前のようにリポジトリのファイルをそのまま置くのではなく、ビルドした `dist/` の中身を静的ホスティングに置きます。
+
+```sh
+npm run build
+# → dist/ を GitHub Pages などにアップロード
+```
+
+`dist/` は相対パスで出力されるので、GitHub Pages などのサブパスにもそのまま置けます。
 
 セーブデータはブラウザの localStorage（`furoneko-save-v1`）に保存されます。最初からやり直す場合は、デバッグモードのリセットボタンを使うか、サイトデータを削除してください。
 
@@ -39,16 +54,17 @@ python3 -m http.server 8000
 - **なかよし**: お風呂やごはんで上がり、猫がレベルアップ。こねこ → わかねこ（Lv5）→ おとなねこ（Lv10）と成長
   - きれいさが20%以下のときは、ごはんでもらえるなかよしが半分になる
 - **お風呂ボーナス**（その日最初のお風呂のみ）: 10pt + 連続日数ごとに5pt（最大+30pt）。7日連続ごとにさらに+50pt
-- **ペット**: ねこ4品種（ミックス・スコティッシュ・ペルシャ・シャム）といぬ4品種（ペキニーズ・柴犬・トイプードル・ダックス）から選べ、品種ごとに毛色も選べる。最初の説明画面か「✨ コーデ」タブでいつでも変更でき、ポイントや育成状況は引き継がれる
+- **ペット**: ねこ4品種（ミックス・スコティッシュ・ペルシャ・シャム）といぬ4品種（ペキニーズ・柴犬・トイプードル・ダックス）から選べ、品種ごとに毛色も選べる。はじめて開いたときは「説明 → 品種 → 毛色 → なまえ」の順に1ステップずつ決める。あとから「✨ コーデ」タブでいつでも変更でき、ポイントや育成状況は引き継がれる
 - ペットをタップするとなでられる。名前をタップすると名前を変更できる
 
 ## 動作検証
 
-`http://localhost:8000/?debug` を開くと、画面下部に「+6時間」「+1日」「リセット」ボタンが表示され、時間経過による変化を待たずに確認できます。
+`http://localhost:5173/?debug` を開くと、画面下部に「+6時間」「+1日」「リセット」ボタンが表示され、時間経過による変化を待たずに確認できます。
 
 | # | 項目 | 手順 | 期待される結果 |
 | --- | --- | --- | --- |
-| 1 | 3D表示 | ページを開く | 3Dの猫が表示される（代わりにメッセージが出る場合は WebGL か CDN の読み込み失敗。コンソールを確認） |
+| 0 | はじめての説明 | サイトデータを消して開く | 説明 → 品種 → 毛色 → なまえ の4ステップが出て、「もどる」「つぎへ」で行き来できる。選んだ品種・毛色が上のお部屋にすぐ反映される。スマホでもボタンが画面内に収まる |
+| 1 | 3D表示 | ページを開く | 3Dの猫が表示される（代わりにメッセージが出る場合は WebGL が使えない。コンソールを確認） |
 | 2 | 待機アニメーション | しばらく待ち、マウスを動かす | 呼吸・しっぽ・まばたき・耳の動き・視線がマウスを追う。20〜30秒ごとに毛づくろい |
 | 3 | なでる | 猫をクリック | 目を細めて首をかしげ、ゴロゴロ振動し、ハートが出る |
 | 4 | 汚れる | 「+1日」を1回押す | 泥汚れが付き、ニオイ線が出る |
@@ -66,44 +82,59 @@ python3 -m http.server 8000
 ヘッドレスブラウザ（自動スクリーンショットなど）ではほとんどフレームが描画されません。デバッグモード時はコンソールで `window.catAvatar.debugStep(秒数)` を呼ぶと、3Dアニメーションを手動で進めてから撮影できます。
 
 ```js
-document.querySelector('#bathButton').click();
+document.querySelector('.bath-button').click();
 catAvatar.debugStep(1.8); // 例: ぶるぶるの場面
 ```
 
 ## セキュリティ
 
-- **XSS 対策**: 画面の HTML は `js/main.js` の `` html`...` `` タグ付きテンプレートで組み立て、埋め込む値はすべて自動でエスケープする。`innerHTML` には `setHtml()` 経由で `` html`...` `` の結果しか入れられない
-- **セーブデータの検証**: localStorage は書き換えられるので、読み込み時に `sanitizeState()`（`js/state.js`）で既知の項目・型・範囲の値だけを取り込む。名前は制御文字・双方向テキスト制御文字を除いて 10 文字まで
-- **CSP**: `index.html` の `<meta http-equiv="Content-Security-Policy">` で、読み込めるのを自サイト・固定バージョンの three.js・Google Fonts に限定し、インラインスクリプトと style 属性を禁止している
-- **SRI**: CDN の three.js は importmap の `integrity` でハッシュを固定している
+- **XSS 対策**: 画面は React で描画していて、埋め込む値は React が自動でエスケープする。`dangerouslySetInnerHTML` は使わない
+- **セーブデータの検証**: localStorage は書き換えられるので、読み込み時に `sanitizeState()`（`src/game/rules.ts`）で既知の項目・型・範囲の値だけを取り込む。名前は制御文字・双方向テキスト制御文字を除いて 10 文字まで
+- **CSP**: `npm run build` のときに `vite.config.ts` のプラグインが `<meta http-equiv="Content-Security-Policy">` を入れ、読み込めるのを自サイトと Google Fonts に限定する。three.js は npm から同梱するので外部のスクリプトは読み込まない。開発サーバーは React のホットリロードがインラインスクリプトを使うため CSP なしで動く
 
 ### 変更するときの注意
 
-- importmap を書き換えたら、CSP の `sha256-...` を計算し直す
-  ```bash
-  python3 -c "import re,hashlib,base64;s=open('index.html').read();m=re.search(r'<script type=\"importmap\">(.*?)</script>',s,re.S);print('sha256-'+base64.b64encode(hashlib.sha256(m.group(1).encode()).digest()).decode())"
-  ```
-- three.js のバージョンを上げる、または別のアドオンを使う場合は、そのファイルの SRI ハッシュを importmap の `integrity` に追加する
-  ```bash
-  curl -sL <ファイルのURL> | openssl dgst -sha384 -binary | openssl base64 -A
-  ```
+- 外部のスクリプトやフォントを増やす場合は、`vite.config.ts` の `CONTENT_SECURITY_POLICY` にそのオリジンを追加し、`npm run preview` で動作を確認する
 - `frame-ancestors`（クリックジャッキング対策）や `X-Content-Type-Options` は meta タグでは効かないので、公開するときはホスティング側の HTTP ヘッダーで設定する
 
 ## ファイル構成
 
 ```text
-js/data.js     アイテム・成長段階・ペットの品種と毛色の定義
-js/state.js    ゲームの状態とルール（時間経過による汚れ・空腹、ポイント、購入）
-js/effects.js  泡・キラキラ・ハートなどの DOM エフェクト
-js/cat3d/      3Dのお部屋とねこ（Three.js・等角投影のトゥーン調）
-  toon.js        トゥーン調マテリアルと輪郭線（背面法）
-  room.js        お部屋（壁紙・床・家具の模様替え、ねこが歩ける範囲）
-  petKit.js      ペット共通の部品（汚れ・濡れ表現の毛のマテリアル、目・舌・足・しっぽ、アクセサリーの取り付け位置）
-  chibiCat.js    ちびねこ（品種で耳・毛の長さ、毛色で模様が変わる）
-  dog.js         ちびいぬ（品種ごとの体形・耳・しっぽ・マズル）
-  accessories.js アクセサリーの3Dモデル
-  avatar.js      シーン、カメラ、ねこの行動（歩き回る・食べる・毛づくろい）、お風呂演出、ハエ
-assets/        完成イメージ（デザインの参考資料）
-js/main.js     UI の描画とイベント処理
-css/style.css  スタイル、部屋のテーマ、アニメーション
+index.html               Vite の入口
+vite.config.ts           ビルド設定と CSP
+src/main.tsx             React の起動
+src/App.tsx              画面全体（お風呂・ごはん・購入などの操作と演出のつなぎ込み）
+src/components/          画面の部品
+  IntroWizard.tsx          はじめての説明とペット選び（ステップ形式）
+  PetPicker.tsx            品種・毛色のボタン（説明とコーデタブで共通）
+  Modal.tsx                モーダル（中身が長いときは本文だけスクロール）
+  Hud.tsx / StatusPanel.tsx / BathSection.tsx / DebugPanel.tsx
+  tabs/                    ごはん・ショップ・コーデ・きろく タブ
+src/game/
+  data.ts                  アイテム・成長段階・ペットの品種と毛色の定義と型
+  rules.ts                 ゲームのルール（状態を受け取って新しい状態を返す純粋関数）と保存・読み込み
+  rules.test.ts            ルールのテスト
+  GameContext.tsx          ゲームの状態を持つ React の Context（useGame() で状態と操作を取り出す）
+  lines.ts                 セリフや表示用の文言
+src/hooks/
+  useCatAvatar.ts          3Dのお部屋の作成と破棄
+  useTimedMessage.ts       吹き出し・トーストの表示時間
+src/effects.ts           泡・キラキラ・ハートなどの DOM エフェクト
+src/cat3d/               3Dのお部屋とねこ（Three.js・等角投影のトゥーン調）
+  toon.ts                  トゥーン調マテリアルと輪郭線（背面法）
+  room.ts                  お部屋（壁紙・床・家具の模様替え、ねこが歩ける範囲）
+  petKit.ts                ペット共通の部品と型（汚れ・濡れ表現の毛のマテリアル、目・舌・足・しっぽ、アクセサリーの取り付け位置）
+  chibiCat.ts              ちびねこ（品種で耳・毛の長さ、毛色で模様が変わる）
+  dog.ts                   ちびいぬ（品種ごとの体形・耳・しっぽ・マズル）
+  accessories.ts           アクセサリーの3Dモデル
+  avatar.ts                シーン、カメラ、ねこの行動（歩き回る・食べる・毛づくろい）、お風呂演出、ハエ
+src/style.css            スタイル、部屋のテーマ、アニメーション
 ```
+
+### 状態管理
+
+- ゲームの状態（ポイント・持ち物・ペットなど）は `GameProvider` が `useState` で 1 つだけ持ち、変わるたびに localStorage に保存する
+- コンポーネントは `useGame()` で `state`（状態）・`now`（ゲーム内の現在時刻）・`actions`（操作）を受け取る。状態を変えるときは必ず `actions` を通す
+- ルールそのものは `rules.ts` の純粋関数なので、React なしでテストできる
+- タブの選択や吹き出しなど、画面だけの一時的な状態は各コンポーネントのローカル state に置く
+- 3D（three.js）は React の描画とは別に動かし、`App.tsx` の `useEffect` で状態の変化を `avatar.setPet / setState / setRoom` に渡す

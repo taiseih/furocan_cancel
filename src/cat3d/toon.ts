@@ -11,16 +11,17 @@ const gradientMap = (() => {
 	return texture;
 })();
 
-export function toon(color, options = {}) {
+export function toon(color: THREE.ColorRepresentation, options: THREE.MeshToonMaterialParameters = {}): THREE.MeshToonMaterial {
 	return new THREE.MeshToonMaterial({color, gradientMap, ...options});
 }
 
-const outlineMaterials = new Map();
+const outlineMaterials = new Map<number, THREE.ShaderMaterial>();
 
 // 法線方向に膨らませた裏面だけを描く「背面法」で、線画のような輪郭線を付ける
-function outlineMaterial(thickness) {
-	if (!outlineMaterials.has(thickness)) {
-		outlineMaterials.set(thickness, new THREE.ShaderMaterial({
+function outlineMaterial(thickness: number): THREE.ShaderMaterial {
+	let material = outlineMaterials.get(thickness);
+	if (!material) {
+		material = new THREE.ShaderMaterial({
 			uniforms: {uThickness: {value: thickness}, uColor: {value: new THREE.Color(OUTLINE_COLOR)}},
 			vertexShader: /* glsl */ `
 				uniform float uThickness;
@@ -36,20 +37,23 @@ function outlineMaterial(thickness) {
 				}
 			`,
 			side: THREE.BackSide,
-		}));
+		});
+		outlineMaterials.set(thickness, material);
 	}
 
-	return outlineMaterials.get(thickness);
+	return material;
 }
 
-export function outlined(mesh, thickness = 0.02) {
+export function outlined<T extends THREE.Mesh>(mesh: T, thickness = 0.02): T {
 	const hull = new THREE.Mesh(mesh.geometry, outlineMaterial(thickness));
 	hull.raycast = () => {};
 	mesh.add(hull);
 	return mesh;
 }
 
-export function mesh(geometry, material, {outline = 0.02, position, rotation} = {}) {
+export type MeshOptions = {outline?: number; position?: THREE.Vector3Tuple; rotation?: THREE.Vector3Tuple};
+
+export function mesh(geometry: THREE.BufferGeometry, material: THREE.Material, {outline = 0.02, position, rotation}: MeshOptions = {}): THREE.Mesh {
 	const result = new THREE.Mesh(geometry, material);
 	if (outline > 0) {
 		outlined(result, outline);
@@ -67,17 +71,22 @@ export function mesh(geometry, material, {outline = 0.02, position, rotation} = 
 }
 
 // 既存のマテリアル（アクセサリーなど）をトゥーン調にそろえて輪郭線を付ける
-export function toonify(object, outline = 0.012) {
-	const meshes = [];
+export function toonify<T extends THREE.Object3D>(object: T, outline = 0.012): T {
+	const meshes: THREE.Mesh[] = [];
 	object.traverse(child => {
-		if (child.isMesh) {
+		if (child instanceof THREE.Mesh) {
 			meshes.push(child);
 		}
 	});
 
 	for (const child of meshes) {
 		const source = child.material;
-		child.material = toon(source.color ?? '#ffffff', {
+		if (Array.isArray(source)) {
+			continue;
+		}
+
+		const color = 'color' in source && source.color instanceof THREE.Color ? source.color : '#ffffff';
+		child.material = toon(color, {
 			transparent: source.transparent,
 			opacity: source.opacity,
 			side: source.side,

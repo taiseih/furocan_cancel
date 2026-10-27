@@ -1,15 +1,62 @@
 import * as THREE from 'three';
-import {mesh, toon, OUTLINE_COLOR} from './toon.js';
+import {mesh, toon, OUTLINE_COLOR} from './toon';
+import type {DogPalette} from '../game/data';
 import {
 	OUTLINE, addEyesAndBlush, addTongue, buildLegs, buildTail, createAccessoryAnchors, createFurMaterial,
-	createHeadSurface, createHitProxy, createPetUniforms, ellipsoid, fluffy, line, paint, swingLegs, updateEyes,
-} from './petKit.js';
+	createHeadSurface, createHitProxy, createPetUniforms, ellipsoid, fluffy, itemAt, line, paint, swingLegs, updateEyes,
+	type Patch, type PetRig,
+} from './petKit';
 
-const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
+const v3 = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
+
+type ColorKey = 'base' | 'light' | 'dark' | 'mask';
+type DogColors = Record<ColorKey, THREE.Color>;
+type ErectEars = {type: 'erect'; pivot: THREE.Vector3Tuple; radius: number; height: number; tilt: number; lean: number; color: ColorKey; inner: ColorKey};
+type DroopEars = {
+	type: 'droop';
+	pivot: THREE.Vector3Tuple;
+	radii: THREE.Vector3Tuple;
+	offset: THREE.Vector3Tuple;
+	rest: number;
+	color: ColorKey;
+	tip: ColorKey;
+	fluff?: number;
+};
+type DogShape = {
+	buildBody(body: THREE.Group, fur: THREE.Material, colors: DogColors): void;
+	bodyBounds: {center: THREE.Vector3Tuple; radii: THREE.Vector3Tuple};
+	legs: {positions: [number, number][]; hipY: number; radius: number; length: number; color: ColorKey; socks?: ColorKey; fluff?: number};
+	tail: {
+		origin: THREE.Vector3Tuple;
+		segments: number;
+		step: number;
+		radius: number;
+		taper: number;
+		colors: ColorKey[];
+		rootPitch: number;
+		curl: number;
+		lift: number;
+		sadDrop: number;
+		wave: number;
+		speed: number;
+		pompom?: number;
+	};
+	head: {
+		radii: THREE.Vector3Tuple;
+		position: THREE.Vector3Tuple;
+		patches(colors: DogColors): Patch[];
+		topknot?: {radii: THREE.Vector3Tuple; position: THREE.Vector3Tuple};
+	};
+	muzzle: {radii: THREE.Vector3Tuple; y: number; lift: number; color: ColorKey; mouthOnHead?: number};
+	ears: ErectEars | DroopEars;
+	eyes: {x: number; y: number; radii: THREE.Vector3Tuple; blushX: number; blushY: number};
+	anchors: {headOffsetY: number; headScale: number; collarCenter: THREE.Vector3Tuple; collarScale: number};
+	bounce: number;
+};
 
 // ちびキャラのいぬ。品種ごとに胴の長さ・足の長さ・耳・しっぽ・マズルを変える
 // colors は palette を THREE.Color にしたもの（base 地の色 / light 明るい色 / dark 濃い色 / mask 顔の黒）
-const BREEDS = {
+const BREEDS: Record<'pekingese', DogShape> & Record<string, DogShape> = {
 	// 鼻ぺちゃの黒いマズル、たてがみのような首まわりの長毛、垂れた長毛の耳、背中に巻いたふさふさのしっぽ
 	pekingese: {
 		buildBody(body, fur, {base, light}) {
@@ -115,9 +162,9 @@ const BREEDS = {
 	},
 };
 
-export function buildDog({breed = 'pekingese', palette}) {
+export function buildDog({breed = 'pekingese', palette}: {breed?: string; palette: DogPalette}): PetRig {
 	const shape = BREEDS[breed] ?? BREEDS.pekingese;
-	const colors = {
+	const colors: DogColors = {
 		base: new THREE.Color(palette.base),
 		light: new THREE.Color(palette.light),
 		dark: new THREE.Color(palette.dark),
@@ -145,7 +192,7 @@ export function buildDog({breed = 'pekingese', palette}) {
 	const tailJoints = buildTail(body, fur, {...tailShape, colors: tailShape.colors.map(key => colors[key])});
 	if (tailShape.pompom) {
 		const pompom = fluffy(ellipsoid(v3(tailShape.pompom, tailShape.pompom, tailShape.pompom), [24, 18]), 0.025);
-		tailJoints.at(-1).add(mesh(paint(pompom, colors.base), fur, {outline: OUTLINE, position: [0, tailShape.step, 0]}));
+		itemAt(tailJoints, tailJoints.length - 1).add(mesh(paint(pompom, colors.base), fur, {outline: OUTLINE, position: [0, tailShape.step, 0]}));
 	}
 
 	// ---------- 頭 ----------
@@ -171,15 +218,15 @@ export function buildDog({breed = 'pekingese', palette}) {
 	muzzleSurface.place(nose, 0, muzzleRadii.y * 0.3, 0.004);
 	muzzle.add(nose);
 
-	let setTongue;
+	let setTongue: (amount: number) => void;
 	if (muzzleShape.mouthOnHead === undefined) {
-		const mouthPoints = [[-0.45, -0.35], [-0.22, -0.6], [0, -0.3], [0.22, -0.6], [0.45, -0.35]]
+		const mouthPoints = ([[-0.45, -0.35], [-0.22, -0.6], [0, -0.3], [0.22, -0.6], [0.45, -0.35]] as const)
 			.map(([x, y]) => muzzleSurface.surface(x * muzzleRadii.x, y * muzzleRadii.y, 0.004).position);
 		muzzle.add(line(mouthPoints, 0.006, ink));
 		setTongue = addTongue(muzzle, muzzleSurface, -muzzleRadii.y * 0.62);
 	} else {
 		const y = muzzleShape.mouthOnHead;
-		const mouthPoints = [[-0.04, y], [-0.02, y - 0.017], [0, y], [0.02, y - 0.017], [0.04, y]]
+		const mouthPoints = ([[-0.04, y], [-0.02, y - 0.017], [0, y], [0.02, y - 0.017], [0.04, y]] as const)
 			.map(([x, pointY]) => headSurface.surface(x, pointY, 0.005).position);
 		head.add(line(mouthPoints, 0.0065, ink));
 		setTongue = addTongue(head, headSurface, y - 0.015);
@@ -239,7 +286,7 @@ export function buildDog({breed = 'pekingese', palette}) {
 		uniforms,
 		foamAnchors: [
 			{...shape.bodyBounds, weight: 3},
-			{center: headShape.position, radii: headShape.radii.map(radius => radius + 0.03), weight: 3},
+			{center: headShape.position, radii: [headShape.radii[0] + 0.03, headShape.radii[1] + 0.03, headShape.radii[2] + 0.03], weight: 3},
 		],
 		update({elapsed, walkPhase, walk, headYaw, headPitch, headRoll, lid, earDroop, earTwitch, tailSway, tailLift, tongue, groom, sad}) {
 			swingLegs(legs, walkPhase, walk, groom);
@@ -252,11 +299,11 @@ export function buildDog({breed = 'pekingese', palette}) {
 				if (earShape.type === 'erect') {
 					// しょんぼりすると立ち耳が後ろへ寝る
 					ear.rotation.z = (earShape.tilt - (earDroop * 0.4)) * side;
-					ear.rotation.x = earShape.lean - (earTwitch[index] * 0.5) - (earDroop * 0.7);
+					ear.rotation.x = earShape.lean - (itemAt(earTwitch, index) * 0.5) - (earDroop * 0.7);
 				} else {
 					// 歩くと垂れ耳がゆれ、しょんぼりすると頭に沿ってぺたんと寝る
 					const bounce = Math.sin(walkPhase * 2) * 0.12 * walk;
-					ear.rotation.z = (earShape.rest + (earTwitch[index] * 0.35) + bounce - (earDroop * 0.12)) * side;
+					ear.rotation.z = (earShape.rest + (itemAt(earTwitch, index) * 0.35) + bounce - (earDroop * 0.12)) * side;
 					ear.rotation.x = earDroop * 0.25;
 				}
 			}

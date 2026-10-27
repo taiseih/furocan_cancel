@@ -1,6 +1,21 @@
-'use strict';
+export type AccessorySlot = 'head' | 'face' | 'neck';
+export type RoomKind = 'wall' | 'floor' | 'furniture';
 
-const ITEM_CATALOG = [
+type ItemBase = {
+	id: string;
+	name: string;
+	icon: string;
+	price: number;
+	description: string;
+};
+
+export type FoodItem = ItemBase & {category: 'food'; hunger: number; xp: number};
+export type AccessoryItem = ItemBase & {category: 'accessory'; slot: AccessorySlot};
+export type RoomItem = ItemBase & {category: 'room'; kind: RoomKind};
+export type Item = FoodItem | AccessoryItem | RoomItem;
+export type ItemCategory = Item['category'];
+
+export const ITEM_CATALOG: readonly Item[] = [
 	// ごはん（消耗品）
 	{id: 'food-kibble', category: 'food', name: 'カリカリ', icon: '🥣', price: 5, hunger: 30, xp: 5, description: 'いつものごはん。おなか +30'},
 	{id: 'food-snack', category: 'food', name: 'とろとろおやつ', icon: '🍮', price: 8, hunger: 15, xp: 15, description: '大好物。なかよし度がぐんと上がる'},
@@ -32,29 +47,46 @@ const ITEM_CATALOG = [
 	{id: 'furn-sofa', category: 'room', kind: 'furniture', name: 'ソファ', icon: '🛋️', price: 120, description: 'ふかふかのソファ'},
 ];
 
-// プロトタイプを持たせず、"__proto__" などの ID で Object.prototype を引けないようにする
-const ITEM_BY_ID = Object.assign(Object.create(null), Object.fromEntries(ITEM_CATALOG.map(item => [item.id, item])));
+// Map にして、"__proto__" などの ID で Object.prototype を引けないようにする
+const ITEM_BY_ID = new Map(ITEM_CATALOG.map(item => [item.id, item]));
 
-const SHOP_CATEGORIES = [
+export function findItem(id: unknown): Item | undefined {
+	return typeof id === 'string' ? ITEM_BY_ID.get(id) : undefined;
+}
+
+export const SHOP_CATEGORIES: readonly {id: ItemCategory; label: string}[] = [
 	{id: 'food', label: '🍗 ごはん'},
 	{id: 'accessory', label: '🎀 アクセサリー'},
 	{id: 'room', label: '🏠 模様替え'},
 ];
 
-const ACCESSORY_SLOTS = [
+export const ACCESSORY_SLOTS: readonly {id: AccessorySlot; label: string}[] = [
 	{id: 'head', label: 'あたま'},
 	{id: 'face', label: 'かお'},
 	{id: 'neck', label: 'くび'},
 ];
 
-const GROWTH_STAGES = [
+export type GrowthStageId = 'baby' | 'young' | 'adult';
+export type GrowthStage = {id: GrowthStageId; minLevel: number; scale: number};
+
+export const GROWTH_STAGES: readonly [GrowthStage, ...GrowthStage[]] = [
 	{id: 'baby', minLevel: 1, scale: 0.78},
 	{id: 'young', minLevel: 5, scale: 0.9},
 	{id: 'adult', minLevel: 10, scale: 1},
 ];
 
+export type SpeciesId = 'cat' | 'dog';
+export type Species = {
+	name: string;
+	icon: string;
+	suffix: string;
+	voice: string;
+	happySound: string;
+	stageNames: Record<GrowthStageId, string>;
+};
+
 // 種類ごとの語尾や鳴き声、成長段階の呼び名
-const PET_SPECIES = {
+export const PET_SPECIES: Record<SpeciesId, Species> = {
 	cat: {
 		name: 'ねこ',
 		icon: '🐱',
@@ -73,11 +105,23 @@ const PET_SPECIES = {
 	},
 };
 
-// 育てられる品種と毛色。palette の色は 3D モデルの塗り分けにそのまま使う
 // ねこ: pattern で模様の種類（calico 三毛 / tabby しま / solid 単色 / bicolor ハチワレ / point ポイント）を決める
-// いぬ: base 地の色 / light 胸・ほほの明るい色 / dark 耳や顔の濃い色
 // eyeRing は黒っぽい毛で目が埋もれないように、黒目のまわりに付ける色
-const PET_BREEDS = [
+export type CatPattern = 'calico' | 'tabby' | 'solid' | 'bicolor' | 'point';
+export type CatPalette = {pattern: CatPattern; base: string; accent: string; sub: string; eyeRing?: string};
+// いぬ: base 地の色 / light 胸・ほほの明るい色 / dark 耳や顔の濃い色 / mask 顔の黒
+export type DogPalette = {base: string; light: string; dark: string; mask?: string; eyeRing?: string};
+
+export type PetColor<Palette> = {id: string; name: string; palette: Palette};
+
+type BreedBase = {id: string; name: string; icon: string; defaultName: string};
+export type CatBreed = BreedBase & {species: 'cat'; colors: readonly [PetColor<CatPalette>, ...PetColor<CatPalette>[]]};
+export type DogBreed = BreedBase & {species: 'dog'; colors: readonly [PetColor<DogPalette>, ...PetColor<DogPalette>[]]};
+export type PetBreed = CatBreed | DogBreed;
+export type AnyPetColor = PetBreed['colors'][number];
+
+// 育てられる品種と毛色。palette の色は 3D モデルの塗り分けにそのまま使う
+export const PET_BREEDS: readonly [PetBreed, ...PetBreed[]] = [
 	{id: 'mix', species: 'cat', name: 'ミックス', icon: '🐱', defaultName: 'ミケ', colors: [
 		{id: 'calico', name: '三毛', palette: {pattern: 'calico', base: '#fffaf2', accent: '#f5b066', sub: '#f8d9aa'}},
 		{id: 'red-tabby', name: '茶トラ', palette: {pattern: 'tabby', base: '#f7c27f', accent: '#e08a3c', sub: '#fff3e2'}},
@@ -123,11 +167,23 @@ const PET_BREEDS = [
 	]},
 ];
 
-const PET_BREED_BY_ID = Object.assign(Object.create(null), Object.fromEntries(PET_BREEDS.map(breed => [breed.id, breed])));
+const PET_BREED_BY_ID = new Map(PET_BREEDS.map(breed => [breed.id, breed]));
+
+export function findBreed(id: unknown): PetBreed | undefined {
+	return typeof id === 'string' ? PET_BREED_BY_ID.get(id) : undefined;
+}
+
+// 3D モデルに渡す品種と毛色。species で palette の形が決まる
+export type PetModel =
+	| {species: 'cat'; breed: string; palette: CatPalette}
+	| {species: 'dog'; breed: string; palette: DogPalette};
 
 // 毛色ボタンに出す見本の色
-function petColorSwatch({palette}) {
-	return palette.pattern
+export function petColorSwatch({palette}: AnyPetColor): [string, string, string] {
+	return 'pattern' in palette
 		? [palette.base, palette.accent, palette.sub]
 		: [palette.base, palette.light, palette.dark];
 }
+
+export type Mood = 'happy' | 'normal' | 'sad';
+export type RoomState = {wall: string; floor: string; furniture: string[]};

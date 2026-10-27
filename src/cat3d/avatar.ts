@@ -1,9 +1,38 @@
 import * as THREE from 'three';
-import {createRoom, ROOM_HALF} from './room.js';
-import {buildChibiCat} from './chibiCat.js';
-import {buildDog} from './dog.js';
-import {attachAccessories} from './accessories.js';
-import {mesh, toon, toonify} from './toon.js';
+import {createRoom, ROOM_HALF} from './room';
+import {buildChibiCat} from './chibiCat';
+import {buildDog} from './dog';
+import {attachAccessories} from './accessories';
+import {mesh, toon, toonify} from './toon';
+import {itemAt, type FoamAnchor, type PetRig} from './petKit';
+import type {Mood, PetModel, RoomState} from '../game/data';
+
+export type AvatarState = {dirt: number; mood: Mood; scale: number; equippedIds: ReadonlySet<string>};
+export type BathCallbacks = {onRinse?: () => void; onDry?: () => void; onDone?: () => void};
+export type CatAvatar = {
+	setState(state: AvatarState): void;
+	setPet(pet: PetModel): void;
+	setRoom(room: RoomState): void;
+	pet(): void;
+	eat(): void;
+	jump(): void;
+	debugStep(seconds: number): void;
+	playBath(callbacks: BathCallbacks): void;
+	dispose(): void;
+};
+
+type ActionType = 'groom' | 'eat' | 'pet' | 'bath' | 'jump' | 'shake';
+type MoodPose = {
+	lid: number;
+	earDroop: number;
+	headPitch: number;
+	tailLift: number;
+	tailSway: number;
+	breath: number;
+	sad: number;
+	walkSpeed: number;
+	restTime: [number, number];
+};
 
 const FOAM_COUNT = 90;
 const DROPLET_COUNT = 60;
@@ -15,20 +44,22 @@ const CAT_SIZE = 1.7;
 const VIEW_DIRECTION = new THREE.Vector3(1, 0.78, 1).normalize();
 const FACE_CAMERA_YAW = Math.atan2(VIEW_DIRECTION.x, VIEW_DIRECTION.z);
 
-const PET_BUILDERS = {cat: buildChibiCat, dog: buildDog};
+function buildPet(model: PetModel): PetRig {
+	return model.species === 'dog' ? buildDog(model) : buildChibiCat(model);
+}
 
-const MOOD_POSE = {
+const MOOD_POSE: Record<Mood, MoodPose> = {
 	happy: {lid: 0, earDroop: 0, headPitch: -0.05, tailLift: 1, tailSway: 0.35, breath: 1.6, sad: 0, walkSpeed: 1, restTime: [2, 4]},
 	normal: {lid: 0, earDroop: 0, headPitch: 0, tailLift: 0.4, tailSway: 0.22, breath: 1.8, sad: 0, walkSpeed: 0.85, restTime: [2.5, 5]},
 	sad: {lid: 0.35, earDroop: 1, headPitch: 0.3, tailLift: 0, tailSway: 0.05, breath: 1.1, sad: 1, walkSpeed: 0.45, restTime: [5, 9]},
 };
 
-const random = (min, max) => min + (Math.random() * (max - min));
-const damp = (current, target, rate, delta) => current + ((target - current) * (1 - Math.exp(-rate * delta)));
-const angleDifference = (from, to) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
-const dampAngle = (current, target, rate, delta) => current + (angleDifference(current, target) * (1 - Math.exp(-rate * delta)));
+const random = (min: number, max: number) => min + (Math.random() * (max - min));
+const damp = (current: number, target: number, rate: number, delta: number) => current + ((target - current) * (1 - Math.exp(-rate * delta)));
+const angleDifference = (from: number, to: number) => Math.atan2(Math.sin(to - from), Math.cos(to - from));
+const dampAngle = (current: number, target: number, rate: number, delta: number) => current + (angleDifference(current, target) * (1 - Math.exp(-rate * delta)));
 
-function sampleEllipsoid(center, radii) {
+function sampleEllipsoid(center: THREE.Vector3Tuple, radii: THREE.Vector3Tuple) {
 	const direction = new THREE.Vector3(random(-1, 1), random(-0.4, 1), random(-1, 1)).normalize();
 	return new THREE.Vector3(...center).add(direction.multiply(new THREE.Vector3(...radii)));
 }
@@ -38,6 +69,10 @@ function createBlobShadow() {
 	canvas.width = 64;
 	canvas.height = 64;
 	const context = canvas.getContext('2d');
+	if (!context) {
+		throw new Error('Canvas 2D が使えません');
+	}
+
 	const gradient = context.createRadialGradient(32, 32, 0, 32, 32, 32);
 	gradient.addColorStop(0, 'rgba(90, 70, 60, 0.32)');
 	gradient.addColorStop(0.7, 'rgba(90, 70, 60, 0.18)');
@@ -77,11 +112,11 @@ function createFly() {
 		group.add(wing);
 		return wing;
 	});
-	group.userData.wings = wings;
-	return group;
+	return {group, wings};
 }
 
-export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
+export function createCatAvatar(container: HTMLElement, options: {onPet?: () => void; stage?: HTMLElement | null; pet: PetModel}): CatAvatar {
+	const {stage, pet: initialPet} = options;
 	const renderer = new THREE.WebGLRenderer({antialias: true, alpha: true});
 	renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 	renderer.domElement.className = 'cat-canvas';
@@ -103,10 +138,10 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 	const room = createRoom();
 	scene.add(room.group);
 
-	let pet = null;
-	let petKey = null;
-	let accessories = new Map();
-	let equippedIds = new Set();
+	let pet: PetRig;
+	let petKey: string | null = null;
+	let accessories = new Map<string, THREE.Group>();
+	let equippedIds: ReadonlySet<string> = new Set<string>();
 	const shadow = createBlobShadow();
 	scene.add(shadow);
 	const bowl = createFoodBowl();
@@ -120,42 +155,41 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 	);
 	foamMesh.frustumCulled = false;
 	foamMesh.visible = false;
-	let foamBubbles = [];
+	let foamBubbles: {position: THREE.Vector3; size: number; delay: number}[] = [];
 
 	// 泡は胴体・頭のおおまかな楕円体の表面に乗せる。体形が品種ごとに違うので、モデルから位置をもらう
-	function scatterFoam(anchors) {
+	function scatterFoam(anchors: FoamAnchor[]) {
 		const totalWeight = anchors.reduce((sum, anchor) => sum + anchor.weight, 0);
 		foamBubbles = Array.from({length: FOAM_COUNT}, () => {
 			let pick = random(0, totalWeight);
-			const anchor = anchors.find(candidate => (pick -= candidate.weight) <= 0) ?? anchors[0];
+			const anchor = anchors.find(candidate => (pick -= candidate.weight) <= 0) ?? itemAt(anchors, 0);
 			return {position: sampleEllipsoid(anchor.center, anchor.radii), size: random(0.06, 0.12), delay: random(0, 0.9)};
 		});
 	}
 
-	function disposePet(object) {
+	function disposePet(object: THREE.Object3D) {
 		object.traverse(child => {
-			if (child.isMesh) {
+			if (child instanceof THREE.Mesh) {
 				child.geometry.dispose();
 			}
 		});
 	}
 
 	// 品種や毛色を切り替えるときは、モデルとアクセサリーを作り直す
-	function setPet({species, breed, palette}) {
-		const builder = PET_BUILDERS[species] ?? PET_BUILDERS.cat;
-		const nextKey = JSON.stringify([species, breed, palette]);
+	function setPet(model: PetModel) {
+		const nextKey = JSON.stringify([model.species, model.breed, model.palette]);
 		if (nextKey === petKey) {
 			return;
 		}
 
-		if (pet) {
+		if (petKey !== null) {
 			pet.body.remove(foamMesh);
 			scene.remove(pet.root);
 			disposePet(pet.root);
 		}
 
 		petKey = nextKey;
-		pet = builder({breed, palette});
+		pet = buildPet(model);
 		scene.add(pet.root);
 		pet.body.add(foamMesh);
 		scatterFoam(pet.foamAnchors);
@@ -176,34 +210,34 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 	const droplets = Array.from({length: DROPLET_COUNT}, () => ({position: new THREE.Vector3(), velocity: new THREE.Vector3()}));
 
 	const flies = [createFly(), createFly()];
-	scene.add(...flies);
+	scene.add(...flies.map(fly => fly.group));
 
-	const target = {dirt: 0, mood: 'normal', scale: 0.78};
+	const target: {dirt: number; mood: Mood; scale: number} = {dirt: 0, mood: 'normal', scale: 0.78};
 	const pose = {
 		dirt: 0, wet: 0, lid: 0, earDroop: 0, headYaw: 0, headPitch: 0, headRoll: 0, tailLift: 0.4, tailSway: 0.22,
 		breath: 1.8, scale: 0.78, tongue: 0, groom: 0, sad: 0, walk: 0, walkPhase: 0,
 	};
-	const brain = {mode: 'rest', until: 1.5, destination: new THREE.Vector3(), nextGroomAt: random(10, 18), nextBlinkAt: 2, blinkStart: -1, nextTwitchAt: 3, twitchStart: -1, twitchEar: 0};
+	const brain: {mode: 'rest' | 'walk'; until: number; destination: THREE.Vector3; nextGroomAt: number; nextBlinkAt: number; blinkStart: number; nextTwitchAt: number; twitchStart: number; twitchEar: number} = {mode: 'rest', until: 1.5, destination: new THREE.Vector3(), nextGroomAt: random(10, 18), nextBlinkAt: 2, blinkStart: -1, nextTwitchAt: 3, twitchStart: -1, twitchEar: 0};
 	const position = new THREE.Vector3(0.6, 0, 1.9);
 	let facing = FACE_CAMERA_YAW;
-	let action = null;
+	let action: {type: ActionType; start: number; duration: number} | null = null;
 	let hasReceivedState = false;
 	let elapsed = 0;
 	let wetTarget = 0;
 	let foamProgress = 0;
 	let isFoamVisible = false;
-	const timers = [];
+	const timers: {at: number; run: () => void}[] = [];
 
 	const tempMatrix = new THREE.Matrix4();
 	const tempQuaternion = new THREE.Quaternion();
 	const tempScale = new THREE.Vector3();
 	const tempVector = new THREE.Vector3();
 
-	function startAction(type, duration) {
+	function startAction(type: ActionType, duration: number) {
 		action = {type, start: elapsed, duration};
 	}
 
-	function actionProgress(type) {
+	function actionProgress(type: ActionType) {
 		if (!action || action.type !== type) {
 			return -1;
 		}
@@ -212,7 +246,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 	}
 
 	// 部屋全体が収まるように正投影の範囲を合わせる
-	const roomCorners = [];
+	const roomCorners: THREE.Vector3[] = [];
 	for (const x of [-ROOM_HALF - 0.3, ROOM_HALF + 0.05]) {
 		for (const y of [-0.25, 3.25]) {
 			for (const z of [-ROOM_HALF - 0.3, ROOM_HALF + 0.05]) {
@@ -246,26 +280,31 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		camera.updateProjectionMatrix();
 	}
 
-	new ResizeObserver(resize).observe(container);
+	const resizeObserver = new ResizeObserver(resize);
+	resizeObserver.observe(container);
 	resize();
 
 	const raycaster = new THREE.Raycaster();
 	const pointerNdc = new THREE.Vector2();
-	function isPointerOnCat(event) {
+	function isPointerOnCat(event: MouseEvent) {
 		const rect = renderer.domElement.getBoundingClientRect();
 		pointerNdc.set((((event.clientX - rect.left) / rect.width) * 2) - 1, -((((event.clientY - rect.top) / rect.height) * 2) - 1));
 		raycaster.setFromCamera(pointerNdc, camera);
 		return raycaster.intersectObject(pet.hitProxy).length > 0;
 	}
 
-	renderer.domElement.addEventListener('click', event => {
+	function handleClick(event: MouseEvent) {
 		if (isPointerOnCat(event)) {
-			onPet?.();
+			options.onPet?.();
 		}
-	});
-	renderer.domElement.addEventListener('pointermove', event => {
+	}
+
+	function handlePointerMove(event: PointerEvent) {
 		renderer.domElement.style.cursor = isPointerOnCat(event) ? 'pointer' : 'default';
-	});
+	}
+
+	renderer.domElement.addEventListener('click', handleClick);
+	renderer.domElement.addEventListener('pointermove', handlePointerMove);
 
 	// ---------- ねこの行動 ----------
 	function pickDestination() {
@@ -293,7 +332,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		return null;
 	}
 
-	function updateBrain(delta) {
+	function updateBrain(delta: number) {
 		const mood = MOOD_POSE[target.mood] ?? MOOD_POSE.normal;
 		if (elapsed > brain.nextBlinkAt) {
 			brain.blinkStart = elapsed;
@@ -349,7 +388,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 				const step = Math.min(distance, WALK_SPEED * walkTarget * delta);
 				position.addScaledVector(toDestination.normalize(), step);
 			}
-		} else if (isBusy && action.type !== 'groom') {
+		} else if (action !== null && action.type !== 'groom') {
 			desiredFacing = FACE_CAMERA_YAW;
 		}
 
@@ -358,7 +397,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		pose.walkPhase += delta * 11 * pose.walk;
 	}
 
-	function updatePose(delta) {
+	function updatePose(delta: number) {
 		const mood = MOOD_POSE[target.mood] ?? MOOD_POSE.normal;
 		// 休んでいるときはカメラの方を見る
 		const towardCamera = THREE.MathUtils.clamp(angleDifference(facing, FACE_CAMERA_YAW), -0.8, 0.8);
@@ -494,7 +533,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		shadow.scale.setScalar(size * (1 - (pet.root.position.y * 0.5)));
 	}
 
-	function updateFoam(delta) {
+	function updateFoam(delta: number) {
 		foamProgress = damp(foamProgress, isFoamVisible ? 1 : 0, isFoamVisible ? 3 : 8, delta);
 		foamMesh.visible = foamProgress > 0.01;
 		if (!foamMesh.visible) {
@@ -523,7 +562,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		dropletMesh.visible = true;
 	}
 
-	function updateDroplets(delta) {
+	function updateDroplets(delta: number) {
 		if (!dropletMesh.visible) {
 			return;
 		}
@@ -544,7 +583,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 
 	function updateFlies() {
 		const isVisible = pose.dirt >= 0.75;
-		for (const [index, fly] of flies.entries()) {
+		for (const [index, {group: fly, wings}] of flies.entries()) {
 			fly.visible = isVisible;
 			if (!isVisible) {
 				continue;
@@ -557,7 +596,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 				position.z + (Math.cos(time * 0.9) * 0.7),
 			);
 			fly.rotation.y = -time;
-			for (const wing of fly.userData.wings) {
+			for (const wing of wings) {
 				wing.rotation.z = Math.sin(elapsed * 90) * 0.6;
 			}
 		}
@@ -575,7 +614,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		stage.style.setProperty('--cat-scale', String(pose.scale * CAT_SIZE));
 	}
 
-	function tick(delta) {
+	function tick(delta: number) {
 		elapsed += delta;
 		for (const timer of timers.filter(candidate => candidate.at <= elapsed)) {
 			timers.splice(timers.indexOf(timer), 1);
@@ -591,7 +630,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		updateStage();
 	}
 
-	let lastFrameTime = null;
+	let lastFrameTime: number | null = null;
 	renderer.setAnimationLoop(time => {
 		const delta = lastFrameTime === null ? 0 : Math.min((time - lastFrameTime) / 1000, 0.05);
 		lastFrameTime = time;
@@ -599,7 +638,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 		renderer.render(scene, camera);
 	});
 
-	function schedule(secondsFromNow, run) {
+	function schedule(secondsFromNow: number, run: () => void) {
 		timers.push({at: elapsed + secondsFromNow, run});
 	}
 
@@ -621,7 +660,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 			}
 		},
 		setPet,
-		setRoom(roomState) {
+		setRoom(roomState: RoomState) {
 			room.setTheme(roomState);
 			// 家具が増えてねこと重なったら、空いている場所へ移す
 			if (!room.isWalkable(position.x, position.z, 0.35)) {
@@ -644,7 +683,7 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 			startAction('jump', 0.7);
 		},
 		// ヘッドレスブラウザなどフレームがほぼ進まない環境で動きを検証するためのデバッグ用
-		debugStep(seconds) {
+		debugStep(seconds: number) {
 			for (let remaining = seconds; remaining > 0; remaining -= 1 / 60) {
 				tick(Math.min(remaining, 1 / 60));
 			}
@@ -670,6 +709,16 @@ export function createCatAvatar(container, {onPet, stage, pet: initialPet}) {
 				onDry?.();
 			});
 			schedule(BATH_TIMELINE.end, () => onDone?.());
+		},
+		// React の StrictMode などで作り直すときに、描画ループと WebGL のリソースを止めて片付ける
+		dispose() {
+			renderer.setAnimationLoop(null);
+			resizeObserver.disconnect();
+			renderer.domElement.removeEventListener('click', handleClick);
+			renderer.domElement.removeEventListener('pointermove', handlePointerMove);
+			timers.length = 0;
+			renderer.dispose();
+			renderer.domElement.remove();
 		},
 	};
 }
