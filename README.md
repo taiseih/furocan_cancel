@@ -4,7 +4,8 @@
 「お風呂に入ったよ！」を押すと、猫がキラキラに包まれてピカピカになります。
 毎日お風呂に入るとボーナスポイントがもらえ、ごはん・アクセサリー・部屋の模様替えアイテムと交換して猫を育てられます。
 
-<img width="726" height="629" alt="スクリーンショット 2026-10-26 11 52 17" src="https://github.com/user-attachments/assets/d2bc395d-91bd-4ff9-a9f8-b528c716bd03" />
+<img width="720" height="823" alt="スクリーンショット 2026-10-27 10 18 41" src="https://github.com/user-attachments/assets/a8f093fe-fcfc-41c1-af8f-ddfec8cadae9" />
+
 
 
 ## 環境構築
