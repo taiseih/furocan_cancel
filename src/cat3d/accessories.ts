@@ -1,4 +1,13 @@
 import * as THREE from 'three';
+import {itemAt} from './petKit';
+
+// アクセサリーを付ける先。head は頭の基準、collar は首まわりの基準（なければ body に付ける）
+export type AccessoryRig = {
+	head: THREE.Object3D;
+	body: THREE.Object3D;
+	collar?: THREE.Object3D;
+	eyePositions: readonly THREE.Vector3[];
+};
 
 const gold = () => new THREE.MeshStandardMaterial({color: '#f5c542', metalness: 1, roughness: 0.25});
 
@@ -55,7 +64,7 @@ function crown() {
 	return group;
 }
 
-function eyewear(isSunglasses, eyePositions) {
+function eyewear(isSunglasses: boolean, eyePositions: readonly THREE.Vector3[]) {
 	const group = new THREE.Group();
 	const frame = isSunglasses ? new THREE.MeshStandardMaterial({color: '#111', roughness: 0.3}) : gold();
 	const lens = isSunglasses
@@ -71,10 +80,12 @@ function eyewear(isSunglasses, eyePositions) {
 	}
 
 	const bridge = new THREE.Mesh(new THREE.TorusGeometry(0.016, 0.0035, 8, 20, Math.PI), frame);
-	const [right, left] = eyePositions[0].x > eyePositions[1].x ? eyePositions : [eyePositions[1], eyePositions[0]];
+	const first = itemAt(eyePositions, 0);
+	const second = itemAt(eyePositions, 1);
+	const [right, left] = first.x > second.x ? [first, second] : [second, first];
 	bridge.position.copy(right).add(left).multiplyScalar(0.5).add(new THREE.Vector3(0, 0.008, 0.045));
 	group.add(bridge);
-	for (const [eye, side] of [[right, 1], [left, -1]]) {
+	for (const [eye, side] of [[right, 1], [left, -1]] as const) {
 		const temple = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.15, 8), frame);
 		temple.rotation.x = Math.PI / 2;
 		temple.position.set(eye.x + (0.049 * side), eye.y, eye.z - 0.016);
@@ -111,7 +122,7 @@ function scarf() {
 	return group;
 }
 
-const BUILDERS = {
+const BUILDERS: Record<string, {parent: 'head' | 'body'; build: (rig: AccessoryRig) => THREE.Group}> = {
 	'acc-ribbon': {parent: 'head', build: ribbon},
 	'acc-strawhat': {parent: 'head', build: strawHat},
 	'acc-crown': {parent: 'head', build: crown},
@@ -121,8 +132,8 @@ const BUILDERS = {
 	'acc-scarf': {parent: 'body', build: scarf},
 };
 
-export function attachAccessories(rig) {
-	const meshes = new Map();
+export function attachAccessories(rig: AccessoryRig): Map<string, THREE.Group> {
+	const meshes = new Map<string, THREE.Group>();
 	for (const [id, {parent, build}] of Object.entries(BUILDERS)) {
 		const object = build(rig);
 		object.visible = false;

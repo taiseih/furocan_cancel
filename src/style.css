@@ -653,18 +653,37 @@ button {
 	z-index: 30;
 }
 
-.modal[hidden] {
-	display: none;
+.modal.is-bottom {
+	place-items: end center;
+	padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 .modal-card {
+	display: flex;
+	flex-direction: column;
 	width: min(360px, 100%);
+	/* 中身が長いときは本文だけスクロールさせ、OK ボタンは常に見えるようにする */
+	max-height: calc(100vh - 32px);
+	max-height: calc(100dvh - 32px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
 	padding: 24px 20px 20px;
 	border-radius: 24px;
 	background: var(--card);
 	text-align: center;
 	box-shadow: 0 12px 30px rgba(0, 0, 0, 0.2);
 	animation: pop-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* 中身が長いときも本文だけスクロールし、下のボタンは常に見える */
+.modal-body {
+	flex: 1 1 auto;
+	min-height: 0;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+	-webkit-overflow-scrolling: touch;
+}
+
+.modal-footer {
+	flex: none;
 }
 
 .modal-card h2 {
@@ -678,11 +697,84 @@ button {
 	margin: 6px 0;
 }
 
-.modal-card .btn {
+.modal-footer .btn {
 	margin-top: 12px;
 	width: 100%;
 	padding: 12px;
 	font-size: 1rem;
+}
+
+.btn-secondary {
+	background: #fff;
+	color: var(--ink);
+	box-shadow: 0 3px 0 var(--line);
+	border: 2px solid var(--line);
+}
+
+/* ---------- はじめてのステップ ---------- */
+.wizard-steps {
+	display: flex;
+	justify-content: center;
+	gap: 6px;
+	margin: 0 0 8px;
+	padding: 0;
+	list-style: none;
+}
+
+.wizard-steps li {
+	width: 8px;
+	height: 8px;
+	border-radius: 4px;
+	background: var(--line);
+	transition: width 0.2s, background 0.2s;
+}
+
+.wizard-steps li.is-done {
+	background: #ffc2d2;
+}
+
+.wizard-steps li.is-current {
+	width: 22px;
+	background: var(--pink);
+}
+
+.wizard-nav {
+	display: flex;
+	gap: 8px;
+}
+
+.wizard-nav .btn-secondary {
+	flex: 0 0 34%;
+}
+
+.modal-card .wizard-hint {
+	margin: 0 0 4px;
+	font-size: 0.78rem;
+	color: var(--ink-soft);
+}
+
+.name-form {
+	margin: 12px 0 4px;
+}
+
+.name-input {
+	width: 100%;
+	margin: 6px 0;
+	padding: 12px;
+	border: 2px solid var(--line);
+	border-radius: 14px;
+	background: #fff;
+	color: var(--ink);
+	/* 16px 未満だと iOS Safari が入力時に画面を拡大してしまう */
+	font: inherit;
+	font-size: 1rem;
+	font-weight: 700;
+	text-align: center;
+}
+
+.name-input:focus {
+	outline: none;
+	border-color: var(--pink);
 }
 
 .modal-emoji {

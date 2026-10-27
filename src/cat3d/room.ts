@@ -1,6 +1,13 @@
 import * as THREE from 'three';
 import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js';
-import {mesh, toon, OUTLINE_COLOR} from './toon.js';
+import {mesh, toon, OUTLINE_COLOR} from './toon';
+import type {RoomState} from '../game/data';
+
+// 床の上の矩形 [x1, z1, x2, z2]
+type Rect = readonly [number, number, number, number];
+type Draw = (context: CanvasRenderingContext2D, width: number, height: number) => void;
+// 知らない ID のときに使う既定のテーマを必ず持つ表
+type ThemeTable<DefaultKey extends string, T> = Record<DefaultKey, T> & Record<string, T>;
 
 // 床は x, z ともに -ROOM_HALF〜ROOM_HALF。奥の2面（x = -ROOM_HALF と z = -ROOM_HALF）に壁がある
 export const ROOM_HALF = 3;
@@ -16,20 +23,25 @@ const COLORS = {
 	cardboard: '#dcae74',
 };
 
-const roundedBox = (width, height, depth, radius = 0.04) => new RoundedBoxGeometry(width, height, depth, 3, Math.min(radius, (Math.min(width, height, depth) / 2) - 0.001));
+const roundedBox = (width: number, height: number, depth: number, radius = 0.04) => new RoundedBoxGeometry(width, height, depth, 3, Math.min(radius, (Math.min(width, height, depth) / 2) - 0.001));
 
-function canvasTexture(width, height, draw) {
+function canvasTexture(width: number, height: number, draw: Draw) {
 	const canvas = document.createElement('canvas');
 	canvas.width = width;
 	canvas.height = height;
-	draw(canvas.getContext('2d'), width, height);
+	const context = canvas.getContext('2d');
+	if (!context) {
+		throw new Error('Canvas 2D が使えません');
+	}
+
+	draw(context, width, height);
 	const texture = new THREE.CanvasTexture(canvas);
 	texture.colorSpace = THREE.SRGBColorSpace;
 	texture.anisotropy = 4;
 	return texture;
 }
 
-function drawCloud(context, x, y, scale) {
+function drawCloud(context: CanvasRenderingContext2D, x: number, y: number, scale: number) {
 	context.save();
 	context.translate(x, y);
 	context.scale(scale, scale);
@@ -48,14 +60,17 @@ function drawCloud(context, x, y, scale) {
 	context.restore();
 }
 
-const WALL_THEMES = {
+type WallTheme = {base: string; stripe?: string; decorate: 'clouds' | 'petals' | 'stars'};
+type CloudSpot = readonly [number, number, number];
+
+const WALL_THEMES: ThemeTable<'wall-default', WallTheme> = {
 	'wall-default': {base: '#fbe9d6', decorate: 'clouds'},
 	'wall-mint': {base: '#e3f6ec', stripe: '#cdeedd', decorate: 'clouds'},
 	'wall-sakura': {base: '#ffeef3', decorate: 'petals'},
 	'wall-night': {base: '#2c336e', decorate: 'stars'},
 };
 
-function wallTexture(themeId, clouds) {
+function wallTexture(themeId: string, clouds: readonly CloudSpot[]) {
 	const theme = WALL_THEMES[themeId] ?? WALL_THEMES['wall-default'];
 	return canvasTexture(1200, 640, (context, width, height) => {
 		context.fillStyle = theme.base;
@@ -103,7 +118,7 @@ function wallTexture(themeId, clouds) {
 	});
 }
 
-const FLOOR_THEMES = {
+const FLOOR_THEMES: ThemeTable<'floor-wood', Draw> = {
 	'floor-wood': (context, width, height) => {
 		context.fillStyle = '#fbf7f2';
 		context.fillRect(0, 0, width, height);
@@ -149,7 +164,7 @@ const FLOOR_THEMES = {
 	},
 };
 
-function floorTexture(themeId) {
+function floorTexture(themeId: string) {
 	return canvasTexture(768, 768, FLOOR_THEMES[themeId] ?? FLOOR_THEMES['floor-wood']);
 }
 
@@ -158,7 +173,7 @@ function bed() {
 	const group = new THREE.Group();
 	const wood = toon(COLORS.wood);
 	group.add(mesh(roundedBox(1.4, 0.18, 2.2), wood, {position: [0, 0.25, 0]}));
-	for (const [x, z] of [[-0.62, -1.02], [0.62, -1.02], [-0.62, 1.02], [0.62, 1.02]]) {
+	for (const [x, z] of [[-0.62, -1.02], [0.62, -1.02], [-0.62, 1.02], [0.62, 1.02]] as const) {
 		group.add(mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.2, 12), wood, {position: [x, 0.1, z]}));
 	}
 
@@ -230,7 +245,7 @@ function lowTable() {
 	const group = new THREE.Group();
 	group.add(mesh(roundedBox(1.5, 0.1, 1.1, 0.03), toon(COLORS.wood), {position: [0, 0.4, 0]}));
 	const leg = toon('#f4f1ee');
-	for (const [x, z] of [[-0.62, -0.42], [0.62, -0.42], [-0.62, 0.42], [0.62, 0.42]]) {
+	for (const [x, z] of [[-0.62, -0.42], [0.62, -0.42], [-0.62, 0.42], [0.62, 0.42]] as const) {
 		group.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.36, 10), leg, {position: [x, 0.18, z]}));
 	}
 
@@ -254,7 +269,7 @@ function plant() {
 	group.add(mesh(new THREE.CylinderGeometry(0.15, 0.11, 0.24, 20), toon('#c8693e'), {position: [0, 0.12, 0]}));
 	group.add(mesh(new THREE.CylinderGeometry(0.165, 0.165, 0.05, 20), toon('#d77a4c'), {position: [0, 0.24, 0]}));
 	const leaf = toon('#5fb36a');
-	for (const [x, y, z, rx, rz] of [[0.1, 0.42, 0, 0.2, -0.7], [-0.1, 0.44, 0.03, 0.1, 0.7], [0, 0.5, -0.08, -0.6, 0], [0.02, 0.38, 0.1, 0.8, 0.1]]) {
+	for (const [x, y, z, rx, rz] of [[0.1, 0.42, 0, 0.2, -0.7], [-0.1, 0.44, 0.03, 0.1, 0.7], [0, 0.5, -0.08, -0.6, 0], [0.02, 0.38, 0.1, 0.8, 0.1]] as const) {
 		const geometry = new THREE.SphereGeometry(1, 16, 10);
 		geometry.scale(0.08, 0.15, 0.03);
 		group.add(mesh(geometry, leaf, {position: [x, y, z], rotation: [rx, 0, rz], outline: 0.012}));
@@ -320,7 +335,7 @@ function sofa() {
 	const group = new THREE.Group();
 	const wood = toon(COLORS.wood);
 	group.add(mesh(roundedBox(0.8, 0.12, 1.7, 0.04), wood, {position: [0, 0.32, 0]}));
-	for (const [x, z] of [[-0.3, -0.75], [0.3, -0.75], [-0.3, 0.75], [0.3, 0.75]]) {
+	for (const [x, z] of [[-0.3, -0.75], [0.3, -0.75], [-0.3, 0.75], [0.3, 0.75]] as const) {
 		group.add(mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.3, 10), toon('#f4f1ee'), {position: [x, 0.14, z]}));
 	}
 
@@ -330,7 +345,9 @@ function sofa() {
 }
 
 // 家具の配置と、ねこが通れない範囲（床の上の矩形 [x1, z1, x2, z2]）
-const BASE_FURNITURE = [
+type Furniture = {build: () => THREE.Object3D; position: THREE.Vector3Tuple; rotation?: THREE.Vector3Tuple; blocks?: Rect};
+
+const BASE_FURNITURE: readonly Furniture[] = [
 	{build: bed, position: [-2.15, 0, -1.75], blocks: [-2.9, -2.95, -1.4, -0.6]},
 	{build: cabinet, position: [-2.55, 0, 1.45], blocks: [-2.95, 0.65, -2.1, 2.25]},
 	{build: lamp, position: [-0.35, 0, -2.6], blocks: [-0.6, -2.9, -0.1, -2.3]},
@@ -341,13 +358,15 @@ const BASE_FURNITURE = [
 	{build: stool, position: [1.35, 0, 1.85], blocks: [1.0, 1.5, 1.7, 2.2]},
 ];
 
-const SHOP_FURNITURE = {
+const SHOP_FURNITURE: Record<string, Furniture> = {
 	'furn-plant': {build: plant, position: [0.75, 0.45, 0.4]},
 	'furn-picture': {build: picture, position: [-1.4, 1.95, -2.93]},
 	'furn-teddy': {build: teddy, position: [-2.15, 0.56, -2.35], rotation: [0, 0.4, 0]},
 	'furn-window': {build: windowFrame, position: [-2.93, 1.9, -1.0]},
 	'furn-sofa': {build: sofa, position: [2.4, 0, 0.2], blocks: [1.95, -0.7, 2.9, 1.1]},
 };
+
+export type Room = ReturnType<typeof createRoom>;
 
 export function createRoom() {
 	const group = new THREE.Group();
@@ -382,10 +401,10 @@ export function createRoom() {
 	const wallpaperRight = new THREE.Mesh(new THREE.PlaneGeometry(ROOM_HALF * 2, WALL_HEIGHT - 0.06), toon('#ffffff'));
 	wallpaperRight.position.set(0, (WALL_HEIGHT / 2) - 0.03, -ROOM_HALF + 0.003);
 	group.add(wallpaperLeft, wallpaperRight);
-	const leftClouds = [[0.82, 0.42, 0.9], [0.18, 0.3, 0.75]];
-	const rightClouds = [[0.2, 0.18, 0.85], [0.86, 0.6, 0.8]];
+	const leftClouds: CloudSpot[] = [[0.82, 0.42, 0.9], [0.18, 0.3, 0.75]];
+	const rightClouds: CloudSpot[] = [[0.2, 0.18, 0.85], [0.86, 0.6, 0.8]];
 
-	const baseObstacles = [];
+	const baseObstacles: Rect[] = [];
 	for (const item of BASE_FURNITURE) {
 		const object = item.build();
 		object.position.set(...item.position);
@@ -395,7 +414,7 @@ export function createRoom() {
 		}
 	}
 
-	const shopObjects = new Map();
+	const shopObjects = new Map<string, THREE.Object3D>();
 	for (const [id, item] of Object.entries(SHOP_FURNITURE)) {
 		const object = item.build();
 		object.position.set(...item.position);
@@ -408,12 +427,12 @@ export function createRoom() {
 		shopObjects.set(id, object);
 	}
 
-	let currentTheme = {};
-	let obstacles = baseObstacles;
+	let currentTheme: Partial<Pick<RoomState, 'wall' | 'floor'>> = {};
+	let obstacles: Rect[] = baseObstacles;
 
 	return {
 		group,
-		setTheme({wall, floor: floorId, furniture}) {
+		setTheme({wall, floor: floorId, furniture}: RoomState) {
 			if (currentTheme.wall !== wall) {
 				wallpaperLeft.material.map?.dispose();
 				wallpaperRight.material.map?.dispose();
@@ -433,10 +452,10 @@ export function createRoom() {
 				object.visible = furniture.includes(id);
 			}
 
-			obstacles = [...baseObstacles, ...furniture.map(id => SHOP_FURNITURE[id]?.blocks).filter(Boolean)];
+			obstacles = [...baseObstacles, ...furniture.map(id => SHOP_FURNITURE[id]?.blocks).filter((blocks): blocks is Rect => blocks !== undefined)];
 			currentTheme = {wall, floor: floorId};
 		},
-		isWalkable(x, z, margin = 0.3) {
+		isWalkable(x: number, z: number, margin = 0.3) {
 			const limit = ROOM_HALF - margin;
 			if (Math.abs(x) > limit || Math.abs(z) > limit) {
 				return false;
